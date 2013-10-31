@@ -14,6 +14,7 @@
  */
  
 var AVT = new Object();
+var AVTvandals = new Object();
 var AVTconfig;
 
 AVT.onLoad=function(){
@@ -29,7 +30,7 @@ AVT.onLoad=function(){
             readDelay: 250, //in milliseconds, how long should we wait in between API calls? Note that this is not a strict rate limit.
             namespaces: "0|2", //a string, delimited by pipe, for which namespaces we want to monitor. See [[Wikipedia:Namespace]] for the list.
             showTypes: "!minor|!bot", //a string, delimited by pipe, for which edits we want to monitor. prefix the type with a ! to hide those edits.
-            editTypes: "edit|new", //a string, delimited by pipe, for the type of edits we want to monitor "edit|new" means both edits and new pages
+            editTypes: "edit|new", //a string, delimited by pipe, for the type of edits we want to monitor "edit|new" means both edits and new pages - completely remove types you don't want
             showByDefault: 1 //show matching edits expanded by default? 1=yes, 0=no, show them collapsed
         };
     }
@@ -594,6 +595,15 @@ AVT.dismissAllAbove = function(div) {
     
     $("#AVTdiff" + (div + 1)).scrollintoview(); //scroll the subsequent div to the top of the page
 };
+
+AVT.rollback = function(editor, title, token) { //this function does NOT implement a rollback feature - this is used for vandal tracking
+    var rollURL = "https://en.wikipedia.org/w/index.php?title=" + title + "&action=rollback&from=" + editor + "&token=" + encodeURIComponent(token); //compose rollback URL
+    window.open(rollURL, "_blank"); //open it in a new page to perform the rollback
+    
+    //regardless of whether or not the rollback succeeded, we want to track it
+    if (AVTvandals.hasOwnProperty(editor)) AVTvandals[editor] += 1; //if we've already recorded them, increment their rollback counter
+        else AVTvandals[editor] = 1; //otherwise, create their entry, set to 1
+}
 
 AVT.pauseResume = function() {
     if (!AVT.paused) {
