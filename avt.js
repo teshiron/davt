@@ -379,11 +379,11 @@ AVT.diffDisplay = function(title, editor, timestamp, summary, matches, content, 
             //token returned by API has an extra slash at the end, remove it
             rollbackToken.slice(0, -1);
             
-            //assemble rollback link
-            rollbackLink = "https://en.wikipedia.org/w/index.php?title=" + title + "&action=rollback&from=" + editor + "&token=" + encodeURIComponent(rollbackToken);
+            //assemble rollback link - links to rollback function for tracking
+            rollbackLink = "javascript:AVT.rollback('" + editor + "', '" + title + "', " + token + "')";
 
             //add it to the HTML
-            newHTML += '[<a href="' + rollbackLink + '" target="_blank">rollback</a>] ';
+            newHTML += '[<a href="' + rollbackLink + '">rollback</a>] ';
             newHTML += '<br>'; //go to second line
             
             if (isNewPage) {
