@@ -363,56 +363,39 @@ AVT.diffDisplay = function(title, editor, timestamp, summary, matches, content, 
     }
  
     newHTML += 'matched <b>' + matches.join(', ') + "</b> "; //add article title and matches separated by a comma and space
-        
-    //retrieve rollback token for [rollback] link
-    $.ajax({
-        url: "/w/api.php?action=query&prop=revisions&format=json&rvtoken=rollback&revids=" + revid,
-        dataType: "JSON",
-        success: function (response) {
-            var temp = response.query.pages;
-            var keys = Object.keys(temp);
-            var key = keys[0];
-            temp = temp[key];
-            temp = temp.revisions[0]; //navigate down the JSON tree
-            rollbackToken = temp.rollbacktoken;
     
-            //token returned by API has an extra slash at the end, remove it
-            rollbackToken.slice(0, -1);
-            
-            //assemble rollback link - links to rollback function for tracking
-            rollbackLink = "javascript:AVT.rollback('" + editor + "', '" + title + "', '" + encodeURIComponent(rollbackToken) + "')";
+    //assemble rollback link - links to rollback function for tracking
+    rollbackLink = "javascript:AVT.rollback('" + editor + "', " + revid + ")";
 
-            //add it to the HTML
-            newHTML += '[<a href="' + rollbackLink + '">rollback</a>] ';
-            newHTML += '<br>'; //go to second line
-            
-            if (isNewPage) {
-                newHTML += 'Created by ';
-            } else {
-                newHTML += 'Edited by ';
-            }
-            
-            //editor name and user research links
-            newHTML += AVT.userLink(editor, "userpage") + ' (' + AVT.userLink(editor, "user talk", title) + ' | ' + AVT.userLink(editor, "contribs") + ' | ' + AVT.userLink(editor, "block log") + ' | ' + AVT.userLink(editor, "block") + ') ';
-            
-            //edit summary and move to the next line
-            if (!summary) summary = "<small>No edit summary provided</small>";
-            newHTML += 'Summary: (<i>' + summary + '</i>)<br>'; //TODO: links in the summary open in current tab - need to add "target='_blank'" to each <a> tag in the summary
-            
-            //now the content to display. this is wrapped in its own id'd DIV to allow collapse/expand functionality
-            newHTML += '<div id="AVTextended' + AVT.count + '">' + content + dismissLink + '</div>';
-            
-            //now an HR to end the listing and close the outer DIV
-            newHTML += '<br><hr></div>';
-            
-            //add the new HTML to the page
-            $("#DAVTcontent").append(newHTML);
-            
-            if (!AVTconfig.showByDefault) { //hide the diff if the setting calls for that
-                $("#AVTextended" + AVT.count).css("display", "none");
-            }
-        }
-    });
+    //add it to the HTML
+    newHTML += '[<a href="' + rollbackLink + '">rollback</a>] ';
+    newHTML += '<br>'; //go to second line
+    
+    if (isNewPage) {
+        newHTML += 'Created by ';
+    } else {
+        newHTML += 'Edited by ';
+    }
+    
+    //editor name and user research links
+    newHTML += AVT.userLink(editor, "userpage") + ' (' + AVT.userLink(editor, "user talk", title) + ' | ' + AVT.userLink(editor, "contribs") + ' | ' + AVT.userLink(editor, "block log") + ' | ' + AVT.userLink(editor, "block") + ') ';
+    
+    //edit summary and move to the next line
+    if (!summary) summary = "<small>No edit summary provided</small>";
+    newHTML += 'Summary: (<i>' + summary + '</i>)<br>'; //TODO: links in the summary open in current tab - need to add "target='_blank'" to each <a> tag in the summary
+    
+    //now the content to display. this is wrapped in its own id'd DIV to allow collapse/expand functionality
+    newHTML += '<div id="AVTextended' + AVT.count + '">' + content + dismissLink + '</div>';
+    
+    //now an HR to end the listing and close the outer DIV
+    newHTML += '<br><hr></div>';
+    
+    //add the new HTML to the page
+    $("#DAVTcontent").append(newHTML);
+    
+    if (!AVTconfig.showByDefault) { //hide the diff if the setting calls for that
+        $("#AVTextended" + AVT.count).css("display", "none");
+    }
 };
 
 AVT.loadBadWords=function(){ //request the bad words wiki page from the API -- keeping the regexen on wiki allows for easy updating
@@ -565,9 +548,24 @@ AVT.dismiss = function(div) {
     $("#AVTdiff" + (div + 1)).scrollintoview(); //scroll the subsequent div to the top of the page - will only work if you haven't been removing divs out of sequence
 };
 
-AVT.rollback = function(editor, title, token) { //this function does NOT implement a rollback feature - this is used for vandal tracking
-    var rollURL = "https://en.wikipedia.org/w/index.php?title=" + title + "&action=rollback&from=" + editor + "&token=" + token; //compose rollback URL
-    window.open(rollURL, "_blank"); //open it in a new page to perform the rollback
+AVT.rollback = function(editor, revid) { //this function does NOT implement a rollback feature - this is used for vandal tracking
+    $.ajax({ //obtain a rollback token and pop a window to perform the rollback
+        url: "/w/api.php?action=query&prop=revisions&format=json&rvtoken=rollback&revids=" + revid,
+        dataType: "JSON",
+        success: function (response) {
+            var temp = response.query.pages;
+            var keys = Object.keys(temp);
+            var key = keys[0];
+            temp = temp[key];
+            var title = temp.title;
+            temp = temp.revisions[0]; //navigate down the JSON tree
+            var rollbackToken = temp.rollbacktoken;
+            //assemble rollback link - links to rollback function for tracking
+    
+            var rollURL = "https://en.wikipedia.org/w/index.php?title=" + title + "&action=rollback&from=" + editor + "&token=" + encodeURIComponent(rollbackToken); //compose rollback URL
+            window.open(rollURL, "_blank"); //open it in a new page to perform the rollback
+        }
+    });
     
     //regardless of whether or not the rollback succeeded, we want to track it
     if (AVTvandals.hasOwnProperty(editor)) AVTvandals[editor] += 1; //if we've already recorded them, increment their rollback counter
