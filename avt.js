@@ -2,15 +2,7 @@
  * Inspired by Lupin's Anti-Vandal Tool by [[User:Lupin]]
  * The RegEx generation function is from Lupin's Tool.
  *
- * Alpha version 0.0.3
  * License: GFDL 1.3 or later*, CC-BY-SA-3.0*, or EPL 1.0 (your choice)
- *
- * TODO: status indicator/display
- *  "dismiss here + all above" option (first implementation failed)
- *  Track users we attempt to roll back, and highlight their future edits as matches (like LAVT used to do)
- *
- * Known issues: timestamps don't always work -- sometimes they come out 00:00:00
- *  Navigation popups mostly don't seem to work on the page
  */
  
 var AVT = new Object();
