@@ -380,7 +380,7 @@ AVT.diffDisplay = function(title, editor, timestamp, summary, matches, content, 
             rollbackToken.slice(0, -1);
             
             //assemble rollback link - links to rollback function for tracking
-            rollbackLink = "javascript:AVT.rollback('" + editor + "', '" + title + "', " + token + "')";
+            rollbackLink = "javascript:AVT.rollback('" + editor + "', '" + title + "', '" + encodeURIComponent(rollbackToken) + "')";
 
             //add it to the HTML
             newHTML += '[<a href="' + rollbackLink + '">rollback</a>] ';
@@ -566,13 +566,13 @@ AVT.dismiss = function(div) {
 };
 
 AVT.rollback = function(editor, title, token) { //this function does NOT implement a rollback feature - this is used for vandal tracking
-    var rollURL = "https://en.wikipedia.org/w/index.php?title=" + title + "&action=rollback&from=" + editor + "&token=" + encodeURIComponent(token); //compose rollback URL
+    var rollURL = "https://en.wikipedia.org/w/index.php?title=" + title + "&action=rollback&from=" + editor + "&token=" + token; //compose rollback URL
     window.open(rollURL, "_blank"); //open it in a new page to perform the rollback
     
     //regardless of whether or not the rollback succeeded, we want to track it
     if (AVTvandals.hasOwnProperty(editor)) AVTvandals[editor] += 1; //if we've already recorded them, increment their rollback counter
         else AVTvandals[editor] = 1; //otherwise, create their entry, set to 1
-}
+};
 
 AVT.pauseResume = function() {
     if (!AVT.paused) {
