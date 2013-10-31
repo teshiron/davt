@@ -573,29 +573,6 @@ AVT.dismiss = function(div) {
     $("#AVTdiff" + (div + 1)).scrollintoview(); //scroll the subsequent div to the top of the page - will only work if you haven't been removing divs out of sequence
 };
 
-AVT.dismissAllAbove = function(div) {
-    var list = new Array();
-    $(".diffDiv").each( function (index, elem) { //select every existing diffDiv element and iterate through them
-        list.push(parseInt($(this).prop("id").slice(7), 10)); //for each one, obtain its id (format of AVTdiff.<count>), convert to number, store in array
-    });
-    
-    for (var i = 0; i < list.length; i++) { //iterate through the array and remove all divs later than the one we've clicked on, as those are staying
-        if (list[i] > div) {
-            list.splice(i, 1);
-            i--; //because the array shrunk
-        }
-    }
-    
-    //dunno why, but "div" doesn't seem to survive
-    list.push(div);
-    
-    for (var i in list) { //iterate through the remainder and dismiss them
-        $("#AVTdiff" + i).remove(); 
-    }
-    
-    $("#AVTdiff" + (div + 1)).scrollintoview(); //scroll the subsequent div to the top of the page
-};
-
 AVT.rollback = function(editor, title, token) { //this function does NOT implement a rollback feature - this is used for vandal tracking
     var rollURL = "https://en.wikipedia.org/w/index.php?title=" + title + "&action=rollback&from=" + editor + "&token=" + encodeURIComponent(token); //compose rollback URL
     window.open(rollURL, "_blank"); //open it in a new page to perform the rollback
