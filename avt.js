@@ -2,17 +2,9 @@
  * Inspired by Lupin's Anti-Vandal Tool by [[User:Lupin]]
  * The RegEx generation function is from Lupin's Tool.
  *
- * Alpha version 0.0.3
  * License: GFDL 1.3 or later*, CC-BY-SA-3.0*, or EPL 1.0 (your choice)
- *
- * TODO: status indicator/display
- *  "dismiss here + all above" option (first implementation failed)
- *  Track users we attempt to roll back, and highlight their future edits as matches (like LAVT used to do)
- *
- * Known issues: timestamps don't always work -- sometimes they come out 00:00:00
- *  Navigation popups mostly don't seem to work on the page
  */
- 
+
 var AVT = new Object();
 var AVTconfig;
 
@@ -34,10 +26,10 @@ AVT.onLoad=function(){
         };
     }
     AVT.count = 0;
-    
+
     if (pageTitle.search("Filter") != -1) AVT.filterChanges(); //if page is DAVT/Filter, trigger Filter Changes procedure
-    
-    //TODO: Implement live spellcheck and watchlist 
+
+    //TODO: Implement live spellcheck and watchlist
 };
 
 AVT.filterChanges=function(){
@@ -49,20 +41,20 @@ AVT.filterChanges=function(){
     $("#mw-content-text").empty(); //blank the "page left blank" element
     $("#firstHeading span").text("Darkwind's Anti-Vandal Tool"); //Replace "Blank page" with the right heading
     $("#mw-content-text").append('<div id="DAVTcontent" style="line-height: 1.5em"></div>'); //add the empty DIV to contain all of our future output
-    
+
     //Pause button
     var button = '<button id="AVTpause">Pause updates</button><br><hr>';
     $("#DAVTcontent").append(button);
     document.getElementById('AVTpause').addEventListener("click", AVT.pauseResume, false);
-    
+
     //create a queue for diffs to download, as well as new pages
     pendingDiffs = new Queue();
     pendingNewPages = new Queue();
-    
-    //now, kick off the RC downloads    
+
+    //now, kick off the RC downloads
     setTimeout(AVT.rcStop, 5400000); //stop the RC job after 90 minutes to prompt the user to continue
     AVT.rcDownloadFilter();
-    
+
     //we're done here - the interval and timeout will take control
 };
 
@@ -70,21 +62,21 @@ AVT.rcDownloadFilter=function(){
     if (AVT.paused) {
         console.log("AVT Paused");
         return; //abort if paused
-    }    
+    }
     AVT.rcIsRunning = 1;
     var time1 = new Date();
     var time2 = new Date();
-      
+
     time2.setTime(time1.getTime() - (AVTconfig.diffDelay * 1000)); //we only want recent changes older than diffDelay
     var timestamp = time2.toISOString(); //so let's generate a timestamp for our API query
-    
+
     //okay, let's build a URL for our API query
     var queryURL = "/w/api.php?action=query&list=recentchanges&format=json&rcdir=older&rcprop=ids&rclimit=100&rctoponly="; //this part won't change
     queryURL += "&rcshow=" + AVTconfig.showTypes + "&rctype=" + AVTconfig.editTypes + "&rcnamespace=" + AVTconfig.namespaces + "&rcstart=" + timestamp;
     if (AVT.rcLastTime) queryURL += "&rcend=" + AVT.rcLastTime; //is there a timestamp to end at?
     AVT.rcLastTime = timestamp; //set the end timestamp for the next round - preventing overlap and duplicate diffs
     console.info(queryURL);
-    
+
     $.ajax({ //pull the list of changes
         url: queryURL,
         dataType: "JSON",
@@ -95,13 +87,13 @@ AVT.rcDownloadFilter=function(){
                 if (props.type == "new") pendingNewPages.enqueue(props.revid); //if the edit is a page creation, queue it up with new pages as they are handled differently
                     else pendingDiffs.enqueue(props.revid); //otherwise put it in the diff queue
             });
-            
+
             //process the new page queue
             if (!pendingNewPages.isEmpty()) AVT.processNewPageFilterDiff();
-            
+
             //process the diff queue
             if (!pendingDiffs.isEmpty()) AVT.processFilterDiff();
-                
+
             //do this again in diffDelay seconds unless we've received a stop signal
             if (!AVT.rcStopSignal) setTimeout(AVT.rcDownloadFilter, (AVTconfig.diffDelay * 1000));
                 else AVT.rcStopSignal = 0;
@@ -116,11 +108,11 @@ AVT.processNewPageFilterDiff = function() {
         return; //abort if paused
     }
     if (pendingNewPages.isEmpty()) return; //abort if the queue is now empty
-    
+
     var revid = pendingNewPages.dequeue(); //pop the top revision off the new page queue
     var title, content, summary, timestamp, editor, matches, latestrev;
     timestamp = new Date();
-    
+
     $.ajax({ //retrieve information about the page -- specifically, we're looking to see if this is still the latest revision.  If it isn't, let's not waste resources downloading the diff.
         url: "/w/api.php?action=query&prop=info&format=json&revids=" + revid,
         dataType: "JSON",
@@ -131,8 +123,8 @@ AVT.processNewPageFilterDiff = function() {
             var key = keys[0];
             temp = temp[key];
             latestrev = temp.lastrevid; //store the latest revision and compare outside the ajax function for scope reasons
-                
-            
+
+
             if (revid != latestrev) {
                 console.info("Not latest revision");
                 if (pendingNewPages.isEmpty()) {
@@ -144,9 +136,9 @@ AVT.processNewPageFilterDiff = function() {
                 }
                 return; //if they don't match, move on to the next item in the queue
             }
-    
+
             console.info("Still latest, pulling full content");
-    
+
             //since we're still working with the latest revision, let's get and process the diff
             $.ajax({
                 url: "/w/api.php?action=query&prop=revisions&format=json&rvprop=timestamp%7Cuser%7Cparsedcomment%7Ccontent&revids=" + revid,
@@ -158,15 +150,15 @@ AVT.processNewPageFilterDiff = function() {
                     temp = temp[key];
                     title = temp.title;
                     temp = temp.revisions; //navigate down the JSON tree
-                    
+
                     timestamp.setTime(Date.parse(temp.timestamp)); //parse the ISO timestamp returned by the server and store it in a date object
                     editor = temp.user;
                     summary = temp.parsedcomment;
-                    content = temp["*"];             
-                
-    
+                    content = temp["*"];
+
+
                     console.info("Testing for a match");
-                    
+
                     //now that we have our data, scan it
                     if (!badWords.test(content)) { //uses a fast method to test if there's a match at all; if there isn't, then go on to the next diff
                         console.info("No match");
@@ -179,15 +171,15 @@ AVT.processNewPageFilterDiff = function() {
                         }
                         return;
                     }
-    
+
                     console.log("Match found");
-                    
+
                     //since there's a match, we need to parse more thoroughly
                     matches = content.match(badWords); //get an array of the matches
                     content.replace(badWords, '<span style="background-color: yellow ! important">$&</span>'); //highlight each match in the content text for display
-                    
+
                     AVT.diffDisplay(title, editor, timestamp, summary, matches, content, revid, 1); //call the function to add this revision to the user's display
-                    
+
                     if (pendingNewPages.isEmpty()) {
                         //TODO: status update to "done"
                         console.log("New page queue is empty");
@@ -208,13 +200,13 @@ AVT.processFilterDiff = function() {
         return; //abort if paused
     }
     if (pendingDiffs.isEmpty()) return; //abort if the queue is now empty
-    
+
     var revid = pendingDiffs.dequeue(); //pop the top revision off the new page queue
     var title, content, diff, summary, timestamp, editor, matches, latestrev;
     timestamp = new Date();
-    
+
     console.info("Revision is " + revid);
-    
+
     $.ajax({ //retrieve information about the page -- specifically, we're looking to see if this is still the latest revision.  If it isn't, let's not waste resources downloading the diff.
         url: "/w/api.php?action=query&prop=info&format=json&revids=" + revid,
         dataType: "JSON",
@@ -224,8 +216,8 @@ AVT.processFilterDiff = function() {
             var key = keys[0];
             temp = temp[key];
             latestrev = temp.lastrevid; //store the latest revision and compare outside the ajax function for scope reasons
-        
-    
+
+
             if (revid != latestrev) {
                 console.info("Not latest revision");
                 if (pendingDiffs.isEmpty()) {
@@ -237,9 +229,9 @@ AVT.processFilterDiff = function() {
                 }
                 return; //if they don't match, move on to the next item in the queue
             }
-    
+
             console.info("Still latest, pulling full content");
-            
+
             //since we're still working with the latest revision, let's get and process the diff
             $.ajax({
                 url: "/w/api.php?action=query&prop=revisions&format=json&rvprop=ids%7Ctimestamp%7Cuser%7Cparsedcomment%7Ccontent&rvdiffto=prev&revids=" + revid,
@@ -251,31 +243,31 @@ AVT.processFilterDiff = function() {
                     temp = temp[key];
                     title = temp.title;
                     temp = temp.revisions[0]; //navigate down the JSON tree
-                    
+
                     timestamp.setTime(Date.parse(temp.timestamp)); //parse the ISO timestamp returned by the server and store it in a date object
                     editor = temp.user;
                     summary = temp.parsedcomment;
                     content = temp["*"];
                     temp = temp.diff;
                     diff = temp["*"];
-                            
+
                     console.info("Testing for a match");
-                     
+
                     //in order to limit false positives from vandalism removal edits, scan the diff first
                     //if there's a match, then scan the wikitext of the page to make sure the vandalism is still there in the current revision
                     //if either test fails to return a match, return out of the function
-                    
+
                     var abort;
-                    
+
                     if (!badWords.test(diff)) {
                         abort = 1;//doesn't match in the diff, don't test the content
-                    } else { 
+                    } else {
                         if (!badWords.test(content)) {
                             abort = 1; //doesn't match in the content
                         }
                     }
-                        
-                    if (abort) { 
+
+                    if (abort) {
                         console.info("No match");
                         if (pendingDiffs.isEmpty()) {
                             //TODO: status update to "done"
@@ -286,21 +278,21 @@ AVT.processFilterDiff = function() {
                         }
                         return;
                     }
-                    
+
                     console.log("Match found");
-                    
+
                     //since there's a match, we need to parse more thoroughly
                     matches = diff.match(badWords); //get an array of the matches (we're scanning the whole diff this time for display reasons)
-                    
+
                     if (matches) matches = findUnique(matches); //filter out duplicates
                     //FIXME: matches is sometimes null here -- why? if there's no match, it should have been rejected up at the .test() call
-                        
+
                     diff = diff.replace(badWords, '<span style="background-color: yellow">$&</span>'); //highlight each match in the content text for display
 
                     diff = "<table>" + diff + "</table>"; //the diff sent by the server starts with <tr>'s, no table tags are included
-                    
+
                     AVT.diffDisplay(title, editor, timestamp, summary, matches, diff, revid, 0); //call the function to add this revision to the user's display
-                    
+
                     if (pendingDiffs.isEmpty()) {
                         //TODO: status update to "done"
                         console.log("Diff Queue is empty");
@@ -318,25 +310,25 @@ AVT.processFilterDiff = function() {
 AVT.diffDisplay = function(title, editor, timestamp, summary, matches, content, revid, isNewPage){ //function to generate and append the HTML to display a matching diff
     var newHTML, rollbackToken, rollbackLink, dismissLink, temptime;
     var timearray = new Array();
-    
+
     if (!matches) return; //FIXME: why does matches come up null here from time to time?
-    
+
     AVT.count++; //this function uses single quotes for strings for ease of dealing with HTML attributes
-    
+
     newHTML = '<div id="AVTdiff' + AVT.count + '" class="diffDiv">' + '(' + AVT.count + ') '; //open the <div> with the next incremental count ID, and display the count
-    
+
     newHTML += '[<a id="hidelink' + AVT.count + '" href="javascript:AVT.showHide(' + AVT.count + ')">'; //open hide/show link tag
-    
+
     if (AVTconfig.showByDefault) { //add hide or show link and close tag
         newHTML += 'hide</a>] ';
     } else {
         newHTML += 'show</a>] ';
     }
-    
-    dismissLink = '[<a href="javascript:AVT.dismiss(' + AVT.count + ')">dismiss</a>] '; 
+
+    dismissLink = '[<a href="javascript:AVT.dismiss(' + AVT.count + ')">dismiss</a>] ';
     //we're saving it to add it again at the bottom
-    
-    newHTML += dismissLink; //add dismiss link 
+
+    newHTML += dismissLink; //add dismiss link
 
     //parse out the time components
     timearray[0] = timestamp.getUTCHours().toString();
@@ -345,11 +337,11 @@ AVT.diffDisplay = function(title, editor, timestamp, summary, matches, content, 
     if (timearray[1].length == 1) timearray[1] = "0" + timearray[1];
     timearray[2] = timestamp.getUTCSeconds().toString();
     if (timearray[2].length == 1) timearray[2] = "0" + timearray[2];
-    
+
     temptime = timearray.join(":"); //now join the pieces together
-    
+
     newHTML += temptime + ': '; //and add it
-    
+
     if (isNewPage) {
         newHTML += 'New page '; //start the sentence with "new page"
 
@@ -357,20 +349,20 @@ AVT.diffDisplay = function(title, editor, timestamp, summary, matches, content, 
         var escaped = content;
         var findReplace = [[/&/g, "&amp;"], [/</g, "&lt;"], [/>/g, "&gt;"], [/"/g, "&quot;"]];
         for(var item in findReplace) escaped = escaped.replace(findReplace[item][0], findReplace[item][1]);
-        
+
         content = '<span style="font-family: monospace">' + escaped + '</span>'; //we want the wikitext monospaced, we have to do this after escaping to preserve the span tag
     } else {
         newHTML += 'Edit to page '; //no escaping is necessary for diffs, as the server should handle that already
     }
-    
+
     newHTML += AVT.wikiLink(title) + " "; //add the title
-    
+
     if (!isNewPage) { //if this is NOT a new page, add history, talk, and logs links
         newHTML += '(' + AVT.specialLink(title, "history") + ' | ' + AVT.specialLink(title, "talk") + ' | ' + AVT.specialLink(title, "logs") + ') ';
     }
- 
+
     newHTML += 'matched <b>' + matches.join(', ') + "</b> "; //add article title and matches separated by a comma and space
-        
+
     //retrieve rollback token for [rollback] link
     $.ajax({
         url: "/w/api.php?action=query&prop=revisions&format=json&rvtoken=rollback&revids=" + revid,
@@ -382,39 +374,39 @@ AVT.diffDisplay = function(title, editor, timestamp, summary, matches, content, 
             temp = temp[key];
             temp = temp.revisions[0]; //navigate down the JSON tree
             rollbackToken = temp.rollbacktoken;
-    
+
             //token returned by API has an extra slash at the end, remove it
             rollbackToken.slice(0, -1);
-            
+
             //assemble rollback link
             rollbackLink = "https://en.wikipedia.org/w/index.php?title=" + title + "&action=rollback&from=" + editor + "&token=" + encodeURIComponent(rollbackToken);
 
             //add it to the HTML
             newHTML += '[<a href="' + rollbackLink + '" target="_blank">rollback</a>] ';
             newHTML += '<br>'; //go to second line
-            
+
             if (isNewPage) {
                 newHTML += 'Created by ';
             } else {
                 newHTML += 'Edited by ';
             }
-            
+
             //editor name and user research links
             newHTML += AVT.userLink(editor, "userpage") + ' (' + AVT.userLink(editor, "user talk", title) + ' | ' + AVT.userLink(editor, "contribs") + ' | ' + AVT.userLink(editor, "block log") + ' | ' + AVT.userLink(editor, "block") + ') ';
-            
+
             //edit summary and move to the next line
             if (!summary) summary = "<small>No edit summary provided</small>";
             newHTML += 'Summary: (<i>' + summary + '</i>)<br>'; //TODO: links in the summary open in current tab - need to add "target='_blank'" to each <a> tag in the summary
-            
+
             //now the content to display. this is wrapped in its own id'd DIV to allow collapse/expand functionality
             newHTML += '<div id="AVTextended' + AVT.count + '">' + content + dismissLink + '</div>';
-            
+
             //now an HR to end the listing and close the outer DIV
             newHTML += '<br><hr></div>';
-            
+
             //add the new HTML to the page
             $("#DAVTcontent").append(newHTML);
-            
+
             if (!AVTconfig.showByDefault) { //hide the diff if the setting calls for that
                 $("#AVTextended" + AVT.count).css("display", "none");
             }
@@ -423,20 +415,20 @@ AVT.diffDisplay = function(title, editor, timestamp, summary, matches, content, 
 };
 
 AVT.loadBadWords=function(){ //request the bad words wiki page from the API -- keeping the regexen on wiki allows for easy updating
-    $.ajax({ 
-        url: "/w/api.php?action=query&prop=revisions&format=json&rvprop=content&rvlimit=1&rvcontentformat=text%2Fx-wiki&titles=User%3ADarkwind%2FDAVT%2Fbadwords", 
+    $.ajax({
+        url: "/w/api.php?action=query&prop=revisions&format=json&rvprop=content&rvlimit=1&rvcontentformat=text%2Fx-wiki&titles=User%3ADarkwind%2FDAVT%2Fbadwords",
         dataType: "JSON",
         async: false,
         success: function (response) {
             var raw1 = response.query.pages["40929001"]; //traverse the API's excessively complicated JSON response
             var raw2 = raw1.revisions[0]; //which uses non-standard identifiers
             var raw3 = raw2["*"]; //making stuff like this necessary
-            
+
             var data = raw3.split("\n"); //now split the page data into an array, each line in its own element
-            
+
             var phrase=[]; //declare variables used when parsing the badword list
             var string=[];
-            
+
             for (var i=0; i<data.length; ++i) {
                 var s=data[i];
 
@@ -484,7 +476,7 @@ AVT.rcStop=function(){ //a function callable via setTimeout (or otherwise) to en
 
 AVT.wikiLink = function(pageTitle) { //takes an article title (with spaces and namespace), converts it to a full URL, and returns it wrapped with an <a> tag.
     var URL, HTML, originalTitle;
-    originalTitle = pageTitle; 
+    originalTitle = pageTitle;
     pageTitle = pageTitle.replace(" ", "_", "g"); //replace spaces with underscores
     encodeURIComponent(pageTitle); //now encode it
     URL = "https://en.wikipedia.org/wiki/" + pageTitle;
@@ -496,7 +488,7 @@ AVT.specialLink = function(pageTitle, pageType, display) { //takes an article ti
     var URL, HTML;
     pageTitle = pageTitle.replace(" ", "_", "g"); //replace spaces with underscores
     encodeURIComponent(pageTitle); //now encode it
-    
+
     switch (pageType) {
         case "history":
             URL = "https://en.wikipedia.org/w/index.php?title=" + pageTitle + "&action=history";
@@ -508,13 +500,13 @@ AVT.specialLink = function(pageTitle, pageType, display) { //takes an article ti
             URL = "https://en.wikipedia.org/w/index.php?title=Special:Log&page=" + pageTitle;
             break;
     }
-    
+
     if (display) { //if there's a string for the display title, use it, otherwise use the pageType
         HTML = '<a href="' + URL + '" target="_blank">' + display + '</a>';
     } else {
         HTML = '<a href="' + URL + '" target="_blank">' + pageType + '</a>';
     }
-    
+
     return HTML;
 };
 
@@ -547,7 +539,7 @@ AVT.userLink = function(userName, pageType, pageTitle, display) {
             if (!display) display = "block";
             break;
     }
-    
+
     HTML = '<a href="' + URL + '" target="_blank">' + display + '</a>';
     return HTML;
 };
@@ -577,21 +569,21 @@ AVT.dismissAllAbove = function(div) {
     $(".diffDiv").each( function (index, elem) { //select every existing diffDiv element and iterate through them
         list.push(parseInt($(this).prop("id").slice(7), 10)); //for each one, obtain its id (format of AVTdiff.<count>), convert to number, store in array
     });
-    
+
     for (var i = 0; i < list.length; i++) { //iterate through the array and remove all divs later than the one we've clicked on, as those are staying
         if (list[i] > div) {
             list.splice(i, 1);
             i--; //because the array shrunk
         }
     }
-    
+
     //dunno why, but "div" doesn't seem to survive
     list.push(div);
-    
+
     for (var i in list) { //iterate through the remainder and dismiss them
-        $("#AVTdiff" + i).remove(); 
+        $("#AVTdiff" + i).remove();
     }
-    
+
     $("#AVTdiff" + (div + 1)).scrollintoview(); //scroll the subsequent div to the top of the page
 };
 
@@ -609,7 +601,7 @@ AVT.pauseResume = function() {
 
 $(document).ready(AVT.onLoad); //trigger the initial script processing when the page is done loading
 
-function findUnique(arr) { 
+function findUnique(arr) {
     return $.grep(arr,function(v,k){
         return $.inArray(v,arr) === k;
     });
