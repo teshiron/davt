@@ -295,8 +295,8 @@ AVT.processFilterDiff = function() {
                     if (matches) matches = findUnique(matches); //filter out duplicates
                     //FIXME: matches is sometimes null here -- why? if there's no match, it should have been rejected up at the .test() call
                         
-                    //diff.replace(badWords, '<span style="background-color: yellow">$&</span>'); //highlight each match in the content text for display (FIXME: doesn't work)
-                    
+                    diff = diff.replace(badWords, '<span style="background-color: yellow">$&</span>'); //highlight each match in the content text for display
+
                     diff = "<table>" + diff + "</table>"; //the diff sent by the server starts with <tr>'s, no table tags are included
                     
                     AVT.diffDisplay(title, editor, timestamp, summary, matches, diff, revid, 0); //call the function to add this revision to the user's display
