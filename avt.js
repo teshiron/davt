@@ -217,7 +217,6 @@ AVT.processFilterDiff = function() {
             var key = keys[0];
             temp = temp[key];
             latestrev = temp.lastrevid; //store the latest revision and compare outside the ajax function for scope reasons
-
             if (revid != latestrev) {
                 console.info("Not latest revision");
                 if (pendingDiffs.isEmpty()) {
@@ -293,7 +292,7 @@ AVT.processFilterDiff = function() {
                     if (matches) matches = findUnique(matches); //filter out duplicates
                     //FIXME: matches is sometimes null here -- why? if there's no match, it should have been rejected up at the .test() call
 
-                    //diff.replace(badWords, '<span style="background-color: yellow">$&</span>'); //highlight each match in the content text for display (FIXME: doesn't work)
+                    diff = diff.replace(badWords, '<span style="background-color: yellow"><big>$&</big></span>'); //highlight each match in the content text for display
 
                     diff = "<table>" + diff + "</table>"; //the diff sent by the server starts with <tr>'s, no table tags are included
 
@@ -576,6 +575,7 @@ AVT.rollback = function(editor, revid) { //this function does NOT implement a ro
             window.open(rollURL, "_blank"); //open it in a new page to perform the rollback
         }
     });
+
 
     //regardless of whether or not the rollback succeeded, we want to track it
     if (AVTvandals.hasOwnProperty(editor)) AVTvandals[editor] += 1; //if we've already recorded them, increment their rollback counter
