@@ -371,7 +371,7 @@ AVT.diffDisplay = function(title, editor, timestamp, summary, matches, content, 
         newHTML += 'matched <b>' + matches.join(', ') + "</b> "; //add matches separated by a comma and space 
     } else {
         var kvCount = AVTvandals[editor];
-        newHTML += (isNewPage ? 'created' : 'performed') + ' by <span style="font-color: red"><b>an editor you previously rolled back ' + kvCount + ' time' + (kvcount > 1 ? 's.' : '.') + ' </b></span> ';
+        newHTML += (isNewPage ? 'created' : 'performed') + ' by <span style="font-color: red"><b>an editor you rolled back ' + kvCount + ' time' + (kvcount > 1 ? 's.' : '.') + ' </b></span> ';
     }
 
     //assemble rollback link - links to rollback function for tracking, save it for later to add to the bottom
