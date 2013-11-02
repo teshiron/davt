@@ -277,7 +277,7 @@ AVT.processFilterDiff = function() {
                     console.log("Match found");
 
                     //since there's a match, we need to parse more thoroughly
-                    if (!knownVandal) matches = diff.match(addedText); //get an array of the matches
+                    if (!knownVandal) matches = addedText.match(badWords); //get an array of the matches
 
                     if (matches) matches = findUnique(matches); //filter out duplicates
                     //FIXME: matches is sometimes null here -- why? if there's no match, it should have been rejected up at the .test() call
