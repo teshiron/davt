@@ -232,6 +232,7 @@ AVT.processFilterDiff = function() {
                 url: "/w/api.php?action=query&prop=revisions&format=json&rvprop=ids%7Ctimestamp%7Cuser%7Cparsedcomment%7Ccontent&rvdiffto=prev&revids=" + revid,
                 dataType: "JSON",
                 success: function (response) {
+                    var abort;
                     var temp = response.query.pages;
                     var keys = Object.keys(temp);
                     var key = keys[0];
@@ -251,13 +252,13 @@ AVT.processFilterDiff = function() {
                     //only the "green" cells from the diff should be matched - we need to parse out that text
                     var addedText = $(diff).find(".diff-addedline").text();
 
-                    var abort, knownVandal, doesMatchDiff; //kvCount is a count of a previous vandal's edits that you've rolled back
+                    var knownVandal, doesMatchDiff;
 
                     if (AVTvandals.hasOwnProperty(editor)) { //see if the editor's username is in the list of rolled-back vandals
                         knownVandal = true;
                     } else {
                         doesMatchDiff = badWords.test(addedText); //if he's not a known vandal, scan the diff
-                        if (!doesMatchDiff) {
+                        if (!doesMatchDiff || title.contains("sandbox")) { //if it does match but it's a sandbox, ignore it
                             abort = true; //not a known vandal, didn't match the diff -- abort
                         }
                     }
