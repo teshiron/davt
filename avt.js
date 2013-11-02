@@ -248,23 +248,17 @@ AVT.processFilterDiff = function() {
 
                     console.log("Testing for a match");
 
-                    //in order to limit false positives from vandalism removal edits, scan the diff first
-                    //if there's a match, then scan the wikitext of the page to make sure the vandalism is still there in the current revision
-                    //if either test fails to return a match, return out of the function
+                    //only the "green" cells from the diff should be matched - we need to parse out that text
+                    var addedText = $(diff).find(".diff-addedline").text();
 
-                    var abort, knownVandal, doesMatchDiff, doesMatchContent; //kvCount is a count of a previous vandal's edits that you've rolled back
+                    var abort, knownVandal, doesMatchDiff; //kvCount is a count of a previous vandal's edits that you've rolled back
 
                     if (AVTvandals.hasOwnProperty(editor)) { //see if the editor's username is in the list of rolled-back vandals
                         knownVandal = true;
                     } else {
-                        doesMatchDiff = badWords.test(diff); //if he's not a known vandal, scan the diff
+                        doesMatchDiff = badWords.test(addedText); //if he's not a known vandal, scan the diff
                         if (!doesMatchDiff) {
                             abort = true; //not a known vandal, didn't match the diff -- abort
-                        } else {
-                            doesMatchContent = badWords.test(content);
-                            if (!doesMatchContent) {
-                                abort = true; //matched the diff, but didn't match the content, so the offensive material was removed in this edit -- abort
-                            }
                         }
                     }
 
@@ -283,7 +277,7 @@ AVT.processFilterDiff = function() {
                     console.log("Match found");
 
                     //since there's a match, we need to parse more thoroughly
-                    if (!knownVandal) matches = diff.match(badWords); //get an array of the matches (we're scanning the whole diff this time for display reasons)
+                    if (!knownVandal) matches = diff.match(addedText); //get an array of the matches
 
                     if (matches) matches = findUnique(matches); //filter out duplicates
                     //FIXME: matches is sometimes null here -- why? if there's no match, it should have been rejected up at the .test() call
