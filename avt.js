@@ -34,7 +34,6 @@ AVT.onLoad=function(){
 };
 
 AVT.filterChanges=function(){
-    console.info("Entering filterChanges");
     if (!AVT.loadBadWords()) return 0; //first, load the "bad words" regex. if it fails, die.
 
     //next, set up the page
@@ -61,7 +60,7 @@ AVT.filterChanges=function(){
 
 AVT.rcDownloadFilter=function(){
     if (AVT.paused) {
-        console.log("AVT Paused");
+        console.info("AVT Paused");
         return; //abort if paused
     }
     AVT.rcIsRunning = 1;
@@ -76,13 +75,12 @@ AVT.rcDownloadFilter=function(){
     queryURL += "&rcshow=" + AVTconfig.showTypes + "&rctype=" + AVTconfig.editTypes + "&rcnamespace=" + AVTconfig.namespaces + "&rcstart=" + timestamp;
     if (AVT.rcLastTime) queryURL += "&rcend=" + AVT.rcLastTime; //is there a timestamp to end at?
     AVT.rcLastTime = timestamp; //set the end timestamp for the next round - preventing overlap and duplicate diffs
-    console.info(queryURL);
+    //console.info(queryURL);
 
     $.ajax({ //pull the list of changes
         url: queryURL,
         dataType: "JSON",
         success: function (response) {
-            console.info("Entering RC ajax success function");
             var edits = response.query.recentchanges; //an array of recent edits, containing several things but most importantly the revision ID for each change (revid)
             response.query.recentchanges.forEach( function (props, ind, array) {
                 if (props.type == "new") pendingNewPages.enqueue(props.revid); //if the edit is a page creation, queue it up with new pages as they are handled differently
@@ -105,7 +103,7 @@ AVT.rcDownloadFilter=function(){
 
 AVT.processNewPageFilterDiff = function() {
     if (AVT.paused) {
-        console.log("AVT Paused");
+        console.info("AVT Paused");
         return; //abort if paused
     }
     if (pendingNewPages.isEmpty()) return; //abort if the queue is now empty
@@ -127,18 +125,18 @@ AVT.processNewPageFilterDiff = function() {
 
 
             if (revid != latestrev) {
-                console.info("Not latest revision");
+                console.log("Not latest revision");
                 if (pendingNewPages.isEmpty()) {
                     //TODO: status update to "done"
-                    console.log("New page queue is empty");
+                    console.info("New page queue is empty");
                 } else {
                     setTimeout(AVT.processNewPageFilterDiff, AVTconfig.readDelay);
-                    console.info("NP Queue length is: " + pendingNewPages.getLength());
+                    console.log("NP Queue length is: " + pendingNewPages.getLength());
                 }
                 return; //if they don't match, move on to the next item in the queue
             }
 
-            console.info("Still latest, pulling full content");
+            console.log("Still latest, pulling full content");
 
             //since we're still working with the latest revision, let's get and process the diff
             $.ajax({
@@ -158,17 +156,17 @@ AVT.processNewPageFilterDiff = function() {
                     content = temp["*"];
 
 
-                    console.info("Testing for a match");
+                    console.log("Testing for a match");
 
                     //now that we have our data, scan it
                     if (!badWords.test(content)) { //uses a fast method to test if there's a match at all; if there isn't, then go on to the next diff
-                        console.info("No match");
+                        console.log("No match");
                         if (pendingNewPages.isEmpty()) {
                             //TODO: status update to "done"
-                            console.log("NP Queue is empty");
+                            console.info("NP Queue is empty");
                         } else {
                             setTimeout(AVT.processNewPageFilterDiff, AVTconfig.readDelay);
-                            console.info("NP Queue length is: " + pendingNewPages.getLength());
+                            console.log("NP Queue length is: " + pendingNewPages.getLength());
                         }
                         return;
                     }
@@ -183,11 +181,11 @@ AVT.processNewPageFilterDiff = function() {
 
                     if (pendingNewPages.isEmpty()) {
                         //TODO: status update to "done"
-                        console.log("New page queue is empty");
+                        console.info("New page queue is empty");
                         return;
                     } else {
                         setTimeout(AVT.processNewPageFilterDiff, AVTconfig.readDelay);
-                        console.info("NP queue length is: " + pendingNewPages.getLength());
+                        console.log("NP queue length is: " + pendingNewPages.getLength());
                     }
                 }
             });
@@ -197,7 +195,7 @@ AVT.processNewPageFilterDiff = function() {
 
 AVT.processFilterDiff = function() {
     if (AVT.paused) {
-        console.log("AVT Paused");
+        console.info("AVT Paused");
         return; //abort if paused
     }
     if (pendingDiffs.isEmpty()) return; //abort if the queue is now empty
@@ -206,7 +204,7 @@ AVT.processFilterDiff = function() {
     var title, content, diff, summary, timestamp, editor, matches, latestrev;
     timestamp = new Date();
 
-    console.info("Revision is " + revid);
+    console.log("Revision is " + revid);
 
     $.ajax({ //retrieve information about the page -- specifically, we're looking to see if this is still the latest revision.  If it isn't, let's not waste resources downloading the diff.
         url: "/w/api.php?action=query&prop=info&format=json&revids=" + revid,
@@ -218,18 +216,18 @@ AVT.processFilterDiff = function() {
             temp = temp[key];
             latestrev = temp.lastrevid; //store the latest revision and compare outside the ajax function for scope reasons
             if (revid != latestrev) {
-                console.info("Not latest revision");
+                console.log("Not latest revision");
                 if (pendingDiffs.isEmpty()) {
                     //TODO: status update to "done"
-                    console.log("Diff queue is empty");
+                    console.info("Diff queue is empty");
                 } else {
                     setTimeout(AVT.processFilterDiff, AVTconfig.readDelay);
-                    console.info("Diff queue length is: " + pendingDiffs.getLength());
+                    console.log("Diff queue length is: " + pendingDiffs.getLength());
                 }
                 return; //if they don't match, move on to the next item in the queue
             }
 
-            console.info("Still latest, pulling full content");
+            console.log("Still latest, pulling full content");
 
             //since we're still working with the latest revision, let's get and process the diff
             $.ajax({
@@ -250,7 +248,7 @@ AVT.processFilterDiff = function() {
                     temp = temp.diff;
                     diff = temp["*"];
 
-                    console.info("Testing for a match");
+                    console.log("Testing for a match");
 
                     //in order to limit false positives from vandalism removal edits, scan the diff first
                     //if there's a match, then scan the wikitext of the page to make sure the vandalism is still there in the current revision
@@ -273,13 +271,13 @@ AVT.processFilterDiff = function() {
                     }
 
                     if (abort) {
-                        console.info("No match");
+                        console.log("No match");
                         if (pendingDiffs.isEmpty()) {
                             //TODO: status update to "done"
-                            console.log("Diff queue is empty");
+                            console.info("Diff queue is empty");
                         } else {
                             setTimeout(AVT.processFilterDiff, AVTconfig.readDelay);
-                            console.info("Diff queue length is: " + pendingDiffs.getLength());
+                            console.log("Diff queue length is: " + pendingDiffs.getLength());
                         }
                         return;
                     }
@@ -300,11 +298,11 @@ AVT.processFilterDiff = function() {
 
                     if (pendingDiffs.isEmpty()) {
                         //TODO: status update to "done"
-                        console.log("Diff Queue is empty");
+                        console.info("Diff Queue is empty");
                         return;
                     } else {
                         setTimeout(AVT.processFilterDiff, AVTconfig.readDelay);
-                        console.info("Diff queue length is: " + pendingDiffs.getLength());
+                        console.log("Diff queue length is: " + pendingDiffs.getLength());
                     }
                 }
             });
@@ -539,7 +537,7 @@ AVT.userLink = function(userName, pageType, pageTitle, display) {
 
 AVT.showHide = function(div) {
     var linkText = $("#hidelink" + div).text();
-    console.log("linkText for div " + div + " is " + linkText);
+    //console.log("linkText for div " + div + " is " + linkText);
     switch (linkText) {
         case "hide":
             $("#AVTextended" + div).css("display", "none");
@@ -588,7 +586,7 @@ AVT.pauseResume = function() {
         $("#AVTpause").text("Resume updates");
     } else {
             AVT.paused = 0;
-            console.log("AVT resuming");
+            console.info("AVT resuming");
             $("AVTpause").text("Pause updates");
             AVT.rcDownloadFilter(); //re-trigger the AVT processing
         }
