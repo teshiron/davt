@@ -23,7 +23,8 @@ AVT.onLoad=function(){
             namespaces: "0|2", //a string, delimited by pipe, for which namespaces we want to monitor. See [[Wikipedia:Namespace]] for the list.
             showTypes: "!minor|!bot", //a string, delimited by pipe, for which edits we want to monitor. prefix the type with a ! to hide those edits.
             editTypes: "edit|new", //a string, delimited by pipe, for the type of edits we want to monitor "edit|new" means both edits and new pages - completely remove types you don't want
-            showByDefault: 1 //show matching edits expanded by default? 1=yes, 0=no, show them collapsed
+            showByDefault: 1, //show matching edits expanded by default? 1=yes, 0=no, show them collapsed
+            areYouThereTimeout: 30 //in minutes, how long before the tool stops and asks if you want to continue. 90 min. maximum, any higher value will be ignored.
         };
     }
     AVT.count = 0;
@@ -51,8 +52,13 @@ AVT.filterChanges=function(){
     pendingDiffs = new Queue();
     pendingNewPages = new Queue();
 
-    //now, kick off the RC downloads
-    setTimeout(AVT.rcStop, 5400000); //stop the RC job after 90 minutes to prompt the user to continue
+    //prepare the user-presence check timeout
+    var aytt = AVTconfig.areYouThereTimeout; //for clarity's sake on the next line
+    AVT.timeDelay = (((aytt > 90) || !aytt) ? 90 : aytt); //if the user's AYT-check is non-existent, 0, or set above 90, return 90 min.
+    AVT.timeDelay = AVT.timeDelay * 60 * 1000; //the timeout function takes milliseconds, not minutes
+    setTimeout(AVT.rcTimeout, AVT.timeDelay); //stop the RC job after that time to prompt the user to continue
+
+    //now, kick off the filter process
     AVT.rcDownloadFilter();
 
     //we're done here - the interval and timeout will take control
@@ -63,6 +69,12 @@ AVT.rcDownloadFilter=function(){
         console.info("AVT Paused");
         return; //abort if paused
     }
+
+    if (AVT.rcStopSignal) {
+        console.info("Script stopped.");
+        return; //abort if stopped
+    }
+
     AVT.rcIsRunning = 1;
     var time1 = new Date();
     var time2 = new Date();
@@ -95,7 +107,7 @@ AVT.rcDownloadFilter=function(){
 
             //do this again in diffDelay seconds unless we've received a stop signal
             if (!AVT.rcStopSignal) setTimeout(AVT.rcDownloadFilter, (AVTconfig.diffDelay * 1000));
-                else AVT.rcStopSignal = 0;
+                else console.info("Script stopped.");
             AVT.rcIsRunning = 0;
         }
     });
@@ -106,6 +118,12 @@ AVT.processNewPageFilterDiff = function() {
         console.info("AVT Paused");
         return; //abort if paused
     }
+
+    if (AVT.rcStopSignal) {
+        console.info("Script stopped.");
+        return; //abort if stopped
+    }
+
     if (pendingNewPages.isEmpty()) return; //abort if the queue is now empty
 
     var revid = pendingNewPages.dequeue(); //pop the top revision off the new page queue
@@ -196,6 +214,12 @@ AVT.processFilterDiff = function() {
         console.info("AVT Paused");
         return; //abort if paused
     }
+
+    if (AVT.rcStopSignal) {
+        console.info("Script stopped.");
+        return; //abort if stopped
+    }
+
     if (pendingDiffs.isEmpty()) return; //abort if the queue is now empty
 
     var revid = pendingDiffs.dequeue(); //pop the top revision off the new page queue
@@ -454,8 +478,14 @@ AVT.loadBadWords=function(){ //request the bad words wiki page from the API -- k
     return 1;
 };
 
-AVT.rcStop=function(){ //a function callable via setTimeout (or otherwise) to end the RC download/parse process
-    AVT.rcStopSignal = 1;
+AVT.rcTimeout=function(){ //a function callable via setTimeout (or otherwise) to end the RC download/parse process
+    AVT.rcStopSignal = 1; //stop the script right away, as the function may otherwise continue in the background due to the setInterval
+    console.warn("DAVT script stopped pending user response to presence check.");
+    if (confirm("Press OK to continue using the anti-vandal tool.")) { //if the user wants to continue, restart the download process
+        AVT.rcStopSignal = 0;
+        setTimeout(AVT.rcTimeout, AVT.timeDelay); //reset the timeout
+        AVT.rcDownloadFilter();
+    }
 };
 
 AVT.wikiLink = function(pageTitle) { //takes an article title (with spaces and namespace), converts it to a full URL, and returns it wrapped with an <a> tag.
