@@ -123,7 +123,6 @@ AVT.processNewPageFilterDiff = function() {
             temp = temp[key];
             latestrev = temp.lastrevid; //store the latest revision and compare outside the ajax function for scope reasons
 
-
             if (revid != latestrev) {
                 console.log("Not latest revision");
                 if (pendingNewPages.isEmpty()) {
@@ -154,7 +153,6 @@ AVT.processNewPageFilterDiff = function() {
                     editor = temp.user;
                     summary = temp.parsedcomment;
                     content = temp["*"];
-
 
                     console.log("Testing for a match");
 
@@ -316,7 +314,7 @@ AVT.diffDisplay = function(title, editor, timestamp, summary, matches, content, 
 
     if (!matches && !isknownVandal) return; //FIXME: why does matches come up null here from time to time? (and not on a known vandal)
 
-    AVT.count++; 
+    AVT.count++;
 
     newHTML = '<div id="AVTdiff' + AVT.count + '" class="diffDiv">' + '(' + AVT.count + ') '; //open the <div> with the next incremental count ID, and display the count
 
@@ -365,7 +363,7 @@ AVT.diffDisplay = function(title, editor, timestamp, summary, matches, content, 
     }
 
     if (!isKnownVandal) {
-        newHTML += 'matched <b>' + matches.join(', ') + "</b> "; //add matches separated by a comma and space 
+        newHTML += 'matched <b>' + matches.join(', ') + "</b> "; //add matches separated by a comma and space
     } else {
         var kvCount = AVTvandals[editor];
         newHTML += (isNewPage ? 'created' : 'performed') + ' by <span style="font-color: red"><b>an editor you rolled back ' + kvCount + ' time' + (kvcount > 1 ? 's.' : '.') + ' </b></span> ';
