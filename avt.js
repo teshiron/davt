@@ -83,7 +83,7 @@ AVT.rcDownloadFilter=function(){
     var timestamp = time2.toISOString(); //so let's generate a timestamp for our API query
 
     //okay, let's build a URL for our API query
-    var queryURL = "/w/api.php?action=query&list=recentchanges&format=json&rcdir=older&rcprop=ids&rclimit=100&rctoponly="; //this part won't change
+    var queryURL = "/w/api.php?action=query&list=recentchanges&format=json&rcdir=older&rcprop=ids|title&rclimit=100&rctoponly="; //this part won't change
     queryURL += "&rcshow=" + AVTconfig.showTypes + "&rctype=" + AVTconfig.editTypes + "&rcnamespace=" + AVTconfig.namespaces + "&rcstart=" + timestamp;
     if (AVT.rcLastTime) queryURL += "&rcend=" + AVT.rcLastTime; //is there a timestamp to end at?
     AVT.rcLastTime = timestamp; //set the end timestamp for the next round - preventing overlap and duplicate diffs
@@ -95,6 +95,7 @@ AVT.rcDownloadFilter=function(){
         success: function (response) {
             var edits = response.query.recentchanges; //an array of recent edits, containing several things but most importantly the revision ID for each change (revid)
             response.query.recentchanges.forEach( function (props, ind, array) {
+                if (props.title.contains(sandbox) || props.title.contains(Sandbox)) continue; //filter out sandboxes up here, saves resources
                 if (props.type == "new") pendingNewPages.enqueue(props.revid); //if the edit is a page creation, queue it up with new pages as they are handled differently
                     else pendingDiffs.enqueue(props.revid); //otherwise put it in the diff queue
             });
@@ -282,7 +283,7 @@ AVT.processFilterDiff = function() {
                         knownVandal = true;
                     } else {
                         doesMatchDiff = badWords.test(addedText); //if he's not a known vandal, scan the diff
-                        if (!doesMatchDiff || title.contains("sandbox")) { //if it does match but it's a sandbox, ignore it
+                        if (!doesMatchDiff) {
                             abort = true; //not a known vandal, didn't match the diff -- abort
                         }
                     }
