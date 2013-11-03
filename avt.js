@@ -483,6 +483,10 @@ AVT.diffDisplay = function(title, editor, timestamp, summary, matches, content, 
     if (!AVTconfig.showByDefault) { //hide the diff if the setting calls for that
         $("#AVTextended" + AVT.count).css("display", "none");
     }
+
+	if (typeof(window.setupTooltips)!='undefined') { //the Navigation Popups script doesn't know about the new div by default
+        setupTooltips(document.getElementById('AVTdiff' + AVT.count));
+    }
 };
 
 AVT.loadBadWords=function(){ //request the bad words wiki page from the API -- keeping the regexen on wiki allows for easy updating
