@@ -95,7 +95,7 @@ AVT.rcDownloadFilter=function(){
         success: function (response) {
             var edits = response.query.recentchanges; //an array of recent edits, containing several things but most importantly the revision ID for each change (revid)
             response.query.recentchanges.forEach( function (props, ind, array) {
-                if (props.title.contains(sandbox) || props.title.contains(Sandbox)) return; //filter out sandboxes up here, saves resources
+                if (props.title.contains("sandbox") || props.title.contains("Sandbox")) return; //filter out sandboxes up here, saves resources
                 if (props.type == "new") pendingNewPages.enqueue(props.revid); //if the edit is a page creation, queue it up with new pages as they are handled differently
                     else pendingDiffs.enqueue(props.revid); //otherwise put it in the diff queue
             });
