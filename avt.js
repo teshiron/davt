@@ -7,7 +7,7 @@
 
 var AVT = new Object();
 var AVTvandals = new Object();
-var AVTconfig;
+var AVTconfig, AVTwhitelist;
 
 AVT.onLoad=function(){
     mw.util.addPortletLink("p-tb", "//en.wikipedia.org/wiki/User:Darkwind/DAVT/Filter", "Darkwind's AVT");
@@ -23,11 +23,22 @@ AVT.onLoad=function(){
             namespaces: "0|2", //a string, delimited by pipe, for which namespaces we want to monitor. See [[Wikipedia:Namespace]] for the list.
             showTypes: "!minor|!bot", //a string, delimited by pipe, for which edits we want to monitor. prefix the type with a ! to hide those edits.
             editTypes: "edit|new", //a string, delimited by pipe, for the type of edits we want to monitor "edit|new" means both edits and new pages - completely remove types you don't want
-            showByDefault: 1, //show matching edits expanded by default? 1=yes, 0=no, show them collapsed
+            showByDefault: true, //show matching edits expanded by default? true=yes, show expanded, false=no, show them collapsed
             areYouThereTimeout: 30 //in minutes, how long before the tool stops and asks if you want to continue. 90 min. maximum, any higher value will be ignored.
         };
     }
-    AVT.count = 0;
+
+    if (!AVTfilters) {
+        AVTfilters = { //anyone matching active filters in this section is "whitelisted" from the tool, and their edits will not appear
+            groupFilterOn: true, //filter based on user groups?
+            groupFilter: ["sysop", "bureaucrat"], //a list of user groups to whitelist, notated as a JavaScript array of strings.
+            //The list of user groups can be found at [[Special:ListUsers]] in the dropdown box, or at [[WP:RIGHTS]].
+            editCountFilterOn: false, //filter based on user's edit count?
+            editCountFilter: 200, //how many edits will exempt the user? 200 is default because that's enough to enroll in [[WP:CVUA]].
+        };
+    }
+
+    AVT.count = 0; //initialize the diff count
 
     if (pageTitle.search("Filter") != -1) AVT.filterChanges(); //if page is DAVT/Filter, trigger Filter Changes procedure
 
