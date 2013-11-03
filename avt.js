@@ -7,7 +7,7 @@
 
 var AVT = new Object();
 var AVTvandals = new Object();
-var AVTconfig, AVTwhitelist;
+var AVTconfig, AVTfilters;
 
 AVT.onLoad=function(){
     mw.util.addPortletLink("p-tb", "//en.wikipedia.org/wiki/User:Darkwind/DAVT/Filter", "Darkwind's AVT");
@@ -39,6 +39,7 @@ AVT.onLoad=function(){
     }
 
     AVT.count = 0; //initialize the diff count
+    AVT.whitelistCache = []; //and an array to cache our whitelist
 
     if (pageTitle.search("Filter") != -1) AVT.filterChanges(); //if page is DAVT/Filter, trigger Filter Changes procedure
 
@@ -265,10 +266,9 @@ AVT.processFilterDiff = function() {
 
             //since we're still working with the latest revision, let's get and process the diff
             $.ajax({
-                url: "/w/api.php?action=query&prop=revisions&format=json&rvprop=ids%7Ctimestamp%7Cuser%7Cparsedcomment%7Ccontent&rvdiffto=prev&revids=" + revid,
+                url: "/w/api.php?action=query&prop=revisions&format=json&rvprop=ids%7Ctimestamp%7Cuser%7Cparsedcomment&rvdiffto=prev&revids=" + revid,
                 dataType: "JSON",
                 success: function (response) {
-                    var abort;
                     var temp = response.query.pages;
                     var keys = Object.keys(temp);
                     var key = keys[0];
@@ -279,59 +279,110 @@ AVT.processFilterDiff = function() {
                     timestamp.setTime(Date.parse(temp.timestamp)); //parse the ISO timestamp returned by the server and store it in a date object
                     editor = temp.user;
                     summary = temp.parsedcomment;
-                    content = temp["*"];
                     temp = temp.diff;
                     diff = temp["*"];
 
-                    console.log("Testing for a match");
-
-                    //only the "green" cells from the diff should be matched - we need to parse out that text
-                    var addedText = $(diff).find(".diff-addedline").text();
-
-                    var knownVandal, doesMatchDiff;
-
-                    if (AVTvandals.hasOwnProperty(editor)) { //see if the editor's username is in the list of rolled-back vandals
-                        knownVandal = true;
-                    } else {
-                        doesMatchDiff = badWords.test(addedText); //if he's not a known vandal, scan the diff
-                        if (!doesMatchDiff) {
-                            abort = true; //not a known vandal, didn't match the diff -- abort
-                        }
-                    }
-
-                    if (abort) {
-                        console.log("No match");
+                    if (AVT.whitelistCache.indexOf(editor) != -1) { //if the editor is in our whitelist cache, abort now
+                        console.log("Editor whitelisted");
                         if (pendingDiffs.isEmpty()) {
                             //TODO: status update to "done"
                             console.info("Diff queue is empty");
                         } else {
                             setTimeout(AVT.processFilterDiff, AVTconfig.readDelay);
                             console.log("Diff queue length is: " + pendingDiffs.getLength());
+                            return;
                         }
-                        return;
-                    }
-
-                    console.log("Match found");
-
-                    //since there's a match, we need to parse more thoroughly
-                    if (!knownVandal) matches = addedText.match(badWords); //get an array of the matches
-
-                    if (matches) matches = findUnique(matches); //filter out duplicates
-                    //FIXME: matches is sometimes null here -- why? if there's no match, it should have been rejected up at the .test() call
-
-                    diff = diff.replace(badWords, '<span style="background-color: yellow"><big>$&</big></span>'); //highlight each match in the content text for display
-
-                    diff = "<table>" + diff + "</table>"; //the diff sent by the server starts with <tr>'s, no table tags are included
-
-                    AVT.diffDisplay(title, editor, timestamp, summary, matches, diff, revid, 0, knownVandal); //call the function to add this revision to the user's display
-
-                    if (pendingDiffs.isEmpty()) {
-                        //TODO: status update to "done"
-                        console.info("Diff Queue is empty");
-                        return;
                     } else {
-                        setTimeout(AVT.processFilterDiff, AVTconfig.readDelay);
-                        console.log("Diff queue length is: " + pendingDiffs.getLength());
+                        console.log("Downloading editor properties");
+
+                        $.ajax({
+                            url: "/w/api.php?action=query&list=users&format=json&usprop=groups%7Ceditcount&ususers=" + editor,
+                            dataType: "JSON",
+                            success: function(response) {
+                                var whitelisted = false;
+                                var abort = false;
+                                var userObj = response.query.users[0];
+
+                                if (AVTfilters.editCountFilterOn && !userObj.hasOwnProperty("invalid")) { //do we care about edit count, and is this a registered user?
+                                    if (userObj.editCount >= AVTfilters.editCountFilter) { //we do, so is their count over the filter threshold?
+                                        whitelisted = true; //if it is, they're whitelisted
+                                    }
+                                }
+
+                                if (AVTfilters.groupFilterOn && !userObj.hasOwnProperty("invalid")) { //do we care about user groups, and is this a registered user?
+                                    for (var groupnum in AVTfilters.groupFilter) { //we do - so for each group listed in the options,
+                                        if (AVTfilters.groupFilter.hasOwnProperty(groupnum)) { //make sure it's really listed in the options,
+                                            if (userObj.groups.indexOf(AVTfilters.groupFilter[groupnum]) != -1) { //then see if the group is in the user's groups
+                                                whitelisted = true; //if it is, they're whitelisted
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if (whitelisted) {
+                                    AVT.whitelistCache.push(editor); //cache them
+                                    console.log("Editor whitelisted");
+                                    if (pendingDiffs.isEmpty()) {
+                                        //TODO: status update to "done"
+                                        console.info("Diff queue is empty");
+                                    } else {
+                                        setTimeout(AVT.processFilterDiff, AVTconfig.readDelay);
+                                        console.log("Diff queue length is: " + pendingDiffs.getLength());
+                                        return;
+                                    }
+                                }
+
+                                console.log("Testing for a match");
+
+                                //only the "green" cells from the diff should be matched - we need to parse out that text
+                                var addedText = $(diff).find(".diff-addedline").text();
+
+                                var knownVandal = false;
+
+                                if (AVTvandals.hasOwnProperty(editor)) { //see if the editor's username is in the list of rolled-back vandals
+                                    knownVandal = true;
+                                } else {
+                                    if (!badWords.test(addedText)) {
+                                        abort = true; //not a known vandal, didn't match the diff -- abort
+                                    }
+                                }
+
+                                if (abort) {
+                                    console.log("No match");
+                                    if (pendingDiffs.isEmpty()) {
+                                        //TODO: status update to "done"
+                                        console.info("Diff queue is empty");
+                                    } else {
+                                        setTimeout(AVT.processFilterDiff, AVTconfig.readDelay);
+                                        console.log("Diff queue length is: " + pendingDiffs.getLength());
+                                    }
+                                    return;
+                                }
+
+                                console.log("Match found");
+
+                                //since there's a match, we need to parse more thoroughly
+                                if (!knownVandal) matches = addedText.match(badWords); //get an array of the matches
+
+                                if (matches) matches = findUnique(matches); //filter out duplicates
+                                //FIXME: matches is sometimes null here -- why? if there's no match, it should have been rejected up at the .test() call
+
+                                diff = diff.replace(badWords, '<span style="background-color: yellow"><big>$&</big></span>'); //highlight each match in the content text for display
+
+                                diff = "<table>" + diff + "</table>"; //the diff sent by the server starts with <tr>'s, no table tags are included
+
+                                AVT.diffDisplay(title, editor, timestamp, summary, matches, diff, revid, 0, knownVandal); //call the function to add this revision to the user's display
+
+                                if (pendingDiffs.isEmpty()) {
+                                    //TODO: status update to "done"
+                                    console.info("Diff Queue is empty");
+                                    return;
+                                } else {
+                                    setTimeout(AVT.processFilterDiff, AVTconfig.readDelay);
+                                    console.log("Diff queue length is: " + pendingDiffs.getLength());
+                                }
+                            }
+                        });
                     }
                 }
             });
