@@ -393,7 +393,8 @@ AVT.processFilterDiff = function() {
 };
 
 AVT.diffDisplay = function(title, editor, timestamp, summary, matches, content, revid, isNewPage, isKnownVandal){ //function to generate and append the HTML to display a matching diff
-    var newHTML, rollbackToken, rollbackLink, dismissLink, wlDismissLink, temptime; //this function uses single quotes for strings for ease of dealing with HTML attributes
+    //this function uses single quotes for strings for ease of dealing with HTML attributes
+    var newHTML, rollbackToken, rollbackLink, dismissLink, wlDismissLink, dismissPriorLink, temptime;
     var timearray = new Array();
 
     if (!matches && !isknownVandal) return; //FIXME: why does matches come up null here from time to time? (and not on a known vandal)
@@ -412,9 +413,10 @@ AVT.diffDisplay = function(title, editor, timestamp, summary, matches, content, 
 
     dismissLink = '[<a href="javascript:AVT.dismiss(' + AVT.count + ')">dismiss</a>] ';
     wlDismissLink = '[<a href="javascript:AVT.wlAndDismiss(\'' + editor + '\', ' + AVT.count + ')">whitelist + dismiss</a>] ';
-    //we're saving it to add it again at the bottom
+    dismissPriorLink = '[<a href="javascript:AVT.dismissWithPrior(' + AVT.count + ')">dismiss + prior</a>] ';
+    //we're saving them to add again at the bottom
 
-    newHTML += dismissLink; //add dismiss link
+    newHTML += dismissLink + dismissPriorLink; //add dismiss links
 
     //parse out the time components
     timearray[0] = timestamp.getUTCHours().toString();
@@ -426,7 +428,7 @@ AVT.diffDisplay = function(title, editor, timestamp, summary, matches, content, 
 
     temptime = timearray.join(":"); //now join the pieces together
 
-    newHTML += temptime + ': '; //and add it
+    newHTML += temptime + ' UTC: '; //and add it
 
     if (isNewPage) {
         newHTML += 'New page '; //start the sentence with "new page"
@@ -475,7 +477,7 @@ AVT.diffDisplay = function(title, editor, timestamp, summary, matches, content, 
     newHTML += 'Summary: (<i>' + summary + '</i>)<br>'; //TODO: links in the summary open in current tab - need to add "target='_blank'" to each <a> tag in the summary
 
     //now the content to display. this is wrapped in its own id'd DIV to allow collapse/expand functionality
-    newHTML += '<div id="AVTextended' + AVT.count + '">' + content + dismissLink + wlDismissLink + rollbackLink + '</div>';
+    newHTML += '<div id="AVTextended' + AVT.count + '">' + content + dismissLink + wlDismissLink + dismissPriorLink + rollbackLink + '</div>';
 
     //now an HR to end the listing and close the outer DIV
     newHTML += '<br><hr></div>';
@@ -631,7 +633,7 @@ AVT.userLink = function(userName, pageType, artTitle, display) { //editor, what 
 
     if (pageType != "whitelist") HTML = '<a href="' + URL + '" target="_blank">' + display + '</a>';
         else HTML = '<a href="' + URL + '">' + display + '</a>'; //no target if JS link
-        
+
     return HTML;
 };
 
@@ -701,6 +703,13 @@ AVT.addWhitelist = function(editor) {
 AVT.wlAndDismiss = function(editor, div) {
     AVT.addWhitelist(editor);
     AVT.dismiss(div);
+};
+
+AVT.dismissWithPrior = function(div) {
+    for (var q = div-1; q > 0; q--) { //start with the divs above, then dismiss the one we clicked on
+        $("#AVTdiff" + q).remove();
+    }
+    AVT.dismiss(div); //call dismiss function on the div we clicked on - that function includes scrolling to the next div
 };
 
 $(document).ready(AVT.onLoad); //trigger the initial script processing when the page is done loading
