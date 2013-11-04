@@ -69,7 +69,7 @@ AVT.filterChanges=function(){
     var aytt = AVTconfig.areYouThereTimeout; //for clarity's sake on the next line
     AVT.timeDelay = (((aytt > 90) || !aytt) ? 90 : aytt); //if the user's AYT-check is non-existent, 0, or set above 90, return 90 min.
     AVT.timeDelay = AVT.timeDelay * 60 * 1000; //the timeout function takes milliseconds, not minutes
-    setTimeout(AVT.rcTimeout, AVT.timeDelay); //stop the RC job after that time to prompt the user to continue
+    AVT.AYTtimer = setTimeout(AVT.rcTimeout, AVT.timeDelay); //stop the RC job after that time to prompt the user to continue
 
     //now, kick off the filter process
     AVT.rcDownloadFilter();
@@ -712,11 +712,13 @@ AVT.rollback = function(editor, revid) { //this function does NOT implement a ro
 AVT.pauseResume = function() {
     if (!AVT.paused) {
         AVT.paused = 1;
+        clearTimeout(AVT.AYTtimer); //stop the user-presence check timer
         $("#AVTpause").text("Resume updates");
     } else {
             AVT.paused = 0;
             console.info("AVT resuming");
             $("AVTpause").text("Pause updates");
+            AVT.AYTtimer = setTimeout(AVT.rcTimeout, AVT.timeDelay); //restart the user-presence check timer
             AVT.rcDownloadFilter(); //re-trigger the AVT processing
         }
 };
