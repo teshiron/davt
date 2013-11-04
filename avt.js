@@ -276,7 +276,9 @@ AVT.processFilterDiff = function() {
                     title = temp.title;
                     temp = temp.revisions[0]; //navigate down the JSON tree
 
-                    timestamp.setTime(Date.parse(temp.timestamp)); //parse the ISO timestamp returned by the server and store it in a date object
+                    //chop the Z off the timestamp, parse it into local time, then chop the timezone off the end and parse again to set GMT
+                    timestamp.setTime(Date.parse(Date.parse(temp.timestamp.slice(0, -1)).toString().slice(0, 28)));
+
                     editor = temp.user;
                     summary = temp.parsedcomment;
                     temp = temp.diff;
