@@ -35,6 +35,7 @@ AVT.onLoad=function(){
             //The list of user groups can be found at [[Special:ListUsers]] in the dropdown box, or at [[WP:RIGHTS]].
             editCountFilterOn: true, //filter based on user's edit count?
             editCountFilter: 200, //how many edits will exempt the user? 200 is default because that's enough to enroll in [[WP:CVUA]].
+            titleFilters: [/[Ss]andbox/, /\.(css|js)/] //a list of regular expressions or strings we want to filter out of titles - if title matches, it won't be checked
         };
     }
 
@@ -107,9 +108,16 @@ AVT.rcDownloadFilter=function(){
         success: function (response) {
             var edits = response.query.recentchanges; //an array of recent edits, containing several things but most importantly the revision ID for each change (revid)
             response.query.recentchanges.forEach( function (props, ind, array) {
-                if (props.title.contains("sandbox") || props.title.contains("Sandbox")) return; //filter out sandboxes up here, saves resources
-                if (props.type == "new") pendingNewPages.enqueue(props.revid); //if the edit is a page creation, queue it up with new pages as they are handled differently
-                    else pendingDiffs.enqueue(props.revid); //otherwise put it in the diff queue
+                var skip = 0;
+                for (var filter = 0; filter < AVTfilters.titleFilters.length; filter++) {
+                    if (props.title.search(AVTfilters.titleFilters[filter]) != -1) { //if the title matches the title filter, skip the queue
+                        skip = 1;
+                    }
+                }
+                if (!skip) { //if it didn't match the filter, queue it up
+                    if (props.type == "new") pendingNewPages.enqueue(props.revid); //if the edit is a page creation, queue it up with new pages as they are handled differently
+                            else pendingDiffs.enqueue(props.revid); //otherwise put it in the diff queue
+                }
             });
 
             //process the new page queue
@@ -269,26 +277,44 @@ AVT.processFilterDiff = function() {
                 url: "/w/api.php?action=query&prop=revisions&format=json&rvprop=ids%7Ctimestamp%7Cuser%7Cparsedcomment&rvdiffto=prev&revids=" + revid,
                 dataType: "JSON",
                 success: function (response) {
-                    var temp = response.query.pages;
-                    var keys = Object.keys(temp);
-                    var key = keys[0];
-                    temp = temp[key];
-                    title = temp.title;
-                    temp = temp.revisions[0]; //navigate down the JSON tree
+                    var temp;
+                    try {
+                        temp = response.query.pages;
+                        var keys = Object.keys(temp);
+                        var key = keys[0];
+                        temp = temp[key];
+                        title = temp.title;
+                        temp = temp.revisions[0]; //navigate down the JSON tree
 
-                    //chop the Z off the timestamp, parse it into local time, then chop the timezone off the end and parse again to set GMT
-                    timestamp.setTime(Date.parse(Date.parse(temp.timestamp.slice(0, -1)).toString().slice(0, 28)));
+                        //chop the Z off the timestamp, parse it into local time, then chop the timezone off the end and parse again to set GMT
+                        timestamp.setTime(Date.parse(Date.parse(temp.timestamp.slice(0, -1)).toString().slice(0, 28)));
 
-                    editor = temp.user;
-                    summary = temp.parsedcomment;
-                    temp = temp.diff;
-                    diff = temp["*"];
+                        editor = temp.user;
+                        summary = temp.parsedcomment;
+                        temp = temp.diff;
+                        diff = temp["*"];
+                    }
+                    catch (e) {
+                        console.error("Unexpected response from server. Response object follows:");
+                        console.error(response);
+                        console.log("Aborted due to error");
+                        if (pendingDiffs.isEmpty()) {
+                            //TODO: status update to "done"
+                            console.info("Diff queue is empty");
+                            return;
+                        } else {
+                            setTimeout(AVT.processFilterDiff, AVTconfig.readDelay);
+                            console.log("Diff queue length is: " + pendingDiffs.getLength());
+                            return;
+                        }
+                    }
 
                     if (AVT.whitelistCache.indexOf(editor) != -1) { //if the editor is in our whitelist cache, abort now
                         console.log("Editor whitelisted");
                         if (pendingDiffs.isEmpty()) {
                             //TODO: status update to "done"
                             console.info("Diff queue is empty");
+                            return;
                         } else {
                             setTimeout(AVT.processFilterDiff, AVTconfig.readDelay);
                             console.log("Diff queue length is: " + pendingDiffs.getLength());
