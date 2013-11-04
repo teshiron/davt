@@ -30,10 +30,10 @@ AVT.onLoad=function(){
 
     if (!AVTfilters) {
         AVTfilters = { //anyone matching active filters in this section is "whitelisted" from the tool, and their edits will not appear
-            groupFilterOn: true, //filter based on user groups?
+            groupFilterOn: false, //filter based on user groups?
             groupFilter: ["sysop", "bureaucrat"], //a list of user groups to whitelist, notated as a JavaScript array of strings.
             //The list of user groups can be found at [[Special:ListUsers]] in the dropdown box, or at [[WP:RIGHTS]].
-            editCountFilterOn: false, //filter based on user's edit count?
+            editCountFilterOn: true, //filter based on user's edit count?
             editCountFilter: 200, //how many edits will exempt the user? 200 is default because that's enough to enroll in [[WP:CVUA]].
         };
     }
@@ -304,7 +304,7 @@ AVT.processFilterDiff = function() {
                                 var userObj = response.query.users[0];
 
                                 if (AVTfilters.editCountFilterOn && !userObj.hasOwnProperty("invalid")) { //do we care about edit count, and is this a registered user?
-                                    if (userObj.editCount >= AVTfilters.editCountFilter) { //we do, so is their count over the filter threshold?
+                                    if (userObj.editcount >= AVTfilters.editCountFilter) { //we do, so is their count over the filter threshold?
                                         whitelisted = true; //if it is, they're whitelisted
                                     }
                                 }
@@ -391,7 +391,7 @@ AVT.processFilterDiff = function() {
 };
 
 AVT.diffDisplay = function(title, editor, timestamp, summary, matches, content, revid, isNewPage, isKnownVandal){ //function to generate and append the HTML to display a matching diff
-    var newHTML, rollbackToken, rollbackLink, dismissLink, temptime; //this function uses single quotes for strings for ease of dealing with HTML attributes
+    var newHTML, rollbackToken, rollbackLink, dismissLink, wlDismissLink, temptime; //this function uses single quotes for strings for ease of dealing with HTML attributes
     var timearray = new Array();
 
     if (!matches && !isknownVandal) return; //FIXME: why does matches come up null here from time to time? (and not on a known vandal)
@@ -409,6 +409,7 @@ AVT.diffDisplay = function(title, editor, timestamp, summary, matches, content, 
     }
 
     dismissLink = '[<a href="javascript:AVT.dismiss(' + AVT.count + ')">dismiss</a>] ';
+    wlDismissLink = '[<a href="javascript:AVT.wlAndDismiss(\'' + editor + '\', ' + AVT.count + ')">whitelist + dismiss</a>] ';
     //we're saving it to add it again at the bottom
 
     newHTML += dismissLink; //add dismiss link
@@ -464,15 +465,15 @@ AVT.diffDisplay = function(title, editor, timestamp, summary, matches, content, 
         newHTML += 'Edited by ';
     }
 
-    //editor name and user research links
-    newHTML += AVT.userLink(editor, "userpage") + ' (' + AVT.userLink(editor, "user talk", title) + ' | ' + AVT.userLink(editor, "contribs") + ' | ' + AVT.userLink(editor, "block log") + ' | ' + AVT.userLink(editor, "block") + ') ';
+    //editor name and user research links on separate line
+    newHTML += AVT.userLink(editor, "userpage") + ' (' + AVT.userLink(editor, "user talk", title) + ' | ' + AVT.userLink(editor, "contribs") + ' | ' + AVT.userLink(editor, "block log") + ' | ' + AVT.userLink(editor, "block") + ' | ' + AVT.userLink(editor, "whitelist") + ')<br>';
 
-    //edit summary and move to the next line
+    //edit summary
     if (!summary) summary = "<small>No edit summary provided</small>";
     newHTML += 'Summary: (<i>' + summary + '</i>)<br>'; //TODO: links in the summary open in current tab - need to add "target='_blank'" to each <a> tag in the summary
 
     //now the content to display. this is wrapped in its own id'd DIV to allow collapse/expand functionality
-    newHTML += '<div id="AVTextended' + AVT.count + '">' + content + dismissLink + rollbackLink + '</div>';
+    newHTML += '<div id="AVTextended' + AVT.count + '">' + content + dismissLink + wlDismissLink + rollbackLink + '</div>';
 
     //now an HR to end the listing and close the outer DIV
     newHTML += '<br><hr></div>';
@@ -591,7 +592,7 @@ AVT.specialLink = function(pageTitle, pageType, display) { //takes an article ti
     return HTML;
 };
 
-AVT.userLink = function(userName, pageType, pageTitle, display) {
+AVT.userLink = function(userName, pageType, artTitle, display) { //editor, what kind of editor function we want, [article title, [link text]]
     var URL, HTML, originalName;
     originalName = userName;
     userName = userName.replace(" ", "_", "g"); //replace spaces with underscores
@@ -604,7 +605,8 @@ AVT.userLink = function(userName, pageType, pageTitle, display) {
             if (!display) display = originalName;
             break;
         case "user talk": //includes a parameter for TW users to populate the article title when warning or welcoming
-            URL = "https://en.wikipedia.org/wiki/User_talk:" + userName + "?vanarticle=" + pageTitle;
+            URL = "https://en.wikipedia.org/wiki/User_talk:" + userName;
+            if (artTitle) URL += "?vanarticle=" + artTitle;
             if (!display) display = "talk";
             break;
         case "contribs":
@@ -619,9 +621,15 @@ AVT.userLink = function(userName, pageType, pageTitle, display) {
             URL = "https://en.wikipedia.org/wiki/Special:Block/" + userName;
             if (!display) display = "block";
             break;
+        case "whitelist":
+            URL = "javascript:AVT.addWhitelist('" + originalName + "')";
+            if (!display) display = "whitelist";
+            break;
     }
 
-    HTML = '<a href="' + URL + '" target="_blank">' + display + '</a>';
+    if (pageType != "whitelist") HTML = '<a href="' + URL + '" target="_blank">' + display + '</a>';
+        else HTML = '<a href="' + URL + '">' + display + '</a>'; //no target if JS link
+        
     return HTML;
 };
 
@@ -642,6 +650,7 @@ AVT.showHide = function(div) {
 
 AVT.dismiss = function(div) {
     $("#AVTdiff" + div).remove(); //remove the requested div
+    console.log("Div #%d dismissed", div);
     $("#AVTdiff" + (div + 1)).scrollintoview(); //scroll the subsequent div to the top of the page - will only work if you haven't been removing divs out of sequence
 };
 
@@ -680,6 +689,16 @@ AVT.pauseResume = function() {
             $("AVTpause").text("Pause updates");
             AVT.rcDownloadFilter(); //re-trigger the AVT processing
         }
+};
+
+AVT.addWhitelist = function(editor) {
+    AVT.whitelistCache.push(editor);
+    console.log("Editor %s added to whitelist", editor);
+};
+
+AVT.wlAndDismiss = function(editor, div) {
+    AVT.addWhitelist(editor);
+    AVT.dismiss(div);
 };
 
 $(document).ready(AVT.onLoad); //trigger the initial script processing when the page is done loading
