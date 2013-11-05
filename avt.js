@@ -39,6 +39,8 @@ AVT.onLoad=function(){
         };
     }
 
+    mw.loader.load('mediawiki.action.history.diff'); //load the CSS required for diff-styling
+
     AVT.count = 0; //initialize the diff count
     AVT.whitelistCache = []; //and an array to cache our whitelist
 
