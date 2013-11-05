@@ -35,9 +35,13 @@ AVT.onLoad=function(){
             //The list of user groups can be found at [[Special:ListUsers]] in the dropdown box, or at [[WP:RIGHTS]].
             editCountFilterOn: true, //filter based on user's edit count?
             editCountFilter: 200, //how many edits will exempt the user? 200 is default because that's enough to enroll in [[WP:CVUA]].
-            titleFilters: [/[Ss]andbox/, /\.(css|js)/] //a list of regular expressions or strings we want to filter out of titles - if title matches, it won't be checked
+            titleFilters: [/[Ss]andbox/] //a list of regular expressions or strings we want to filter out of titles - if title matches, it won't be checked
         };
     }
+
+     //the following item is required in the title filter list to prevent the bug in issue #18
+     //since it is a bug fix, we don't keep it in the editable title filter list
+    AVTfilters.titleFilters.push(/\.(css|js)/);
 
     mw.loader.load('mediawiki.action.history.diff'); //load the CSS required for diff-styling
 
