@@ -24,7 +24,7 @@ AVT.onLoad=function(){
             showTypes: "!minor|!bot", //a string, delimited by pipe, for which edits we want to monitor. prefix the type with a ! to hide those edits.
             editTypes: "edit|new", //a string, delimited by pipe, for the type of edits we want to monitor "edit|new" means both edits and new pages - completely remove types you don't want
             showByDefault: true, //show matching edits expanded by default? true=yes, show expanded, false=no, show them collapsed
-            areYouThereTimeout: 30 //in minutes, how long before the tool stops and asks if you want to continue. 90 min. maximum, any higher value will be ignored.
+            areYouThereTimeout: 60 //in minutes, how long before the tool stops and asks if you want to continue. 90 min. maximum, any higher value will be ignored.
         };
     }
 
