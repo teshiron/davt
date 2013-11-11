@@ -723,7 +723,7 @@ AVT.pauseResume = function() {
     } else {
             AVT.paused = 0;
             console.info("AVT resuming");
-            $("AVTpause").text("Pause updates");
+            $("#AVTpause").text("Pause updates");
             AVT.AYTtimer = setTimeout(AVT.rcTimeout, AVT.timeDelay); //restart the user-presence check timer
             AVT.rcDownloadFilter(); //re-trigger the AVT processing
         }
