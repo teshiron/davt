@@ -24,7 +24,7 @@ AVT.onLoad=function(){
             showTypes: "!minor|!bot", //a string, delimited by pipe, for which edits we want to monitor. prefix the type with a ! to hide those edits.
             editTypes: "edit|new", //a string, delimited by pipe, for the type of edits we want to monitor "edit|new" means both edits and new pages - completely remove types you don't want
             showByDefault: true, //show matching edits expanded by default? true=yes, show expanded, false=no, show them collapsed
-            areYouThereTimeout: 30 //in minutes, how long before the tool stops and asks if you want to continue. 90 min. maximum, any higher value will be ignored.
+            areYouThereTimeout: 60 //in minutes, how long before the tool stops and asks if you want to continue. 90 min. maximum, any higher value will be ignored.
         };
     }
 
@@ -35,8 +35,15 @@ AVT.onLoad=function(){
             //The list of user groups can be found at [[Special:ListUsers]] in the dropdown box, or at [[WP:RIGHTS]].
             editCountFilterOn: true, //filter based on user's edit count?
             editCountFilter: 200, //how many edits will exempt the user? 200 is default because that's enough to enroll in [[WP:CVUA]].
+            titleFilters: [/[Ss]andbox/] //a list of regular expressions or strings we want to filter out of titles - if title matches, it won't be checked
         };
     }
+
+     //the following item is required in the title filter list to prevent the bug in issue #18
+     //since it is a bug fix, we don't keep it in the editable title filter list
+    AVTfilters.titleFilters.push(/\.(css|js)/);
+
+    mw.loader.load('mediawiki.action.history.diff'); //load the CSS required for diff-styling
 
     AVT.count = 0; //initialize the diff count
     AVT.whitelistCache = []; //and an array to cache our whitelist
@@ -68,7 +75,7 @@ AVT.filterChanges=function(){
     var aytt = AVTconfig.areYouThereTimeout; //for clarity's sake on the next line
     AVT.timeDelay = (((aytt > 90) || !aytt) ? 90 : aytt); //if the user's AYT-check is non-existent, 0, or set above 90, return 90 min.
     AVT.timeDelay = AVT.timeDelay * 60 * 1000; //the timeout function takes milliseconds, not minutes
-    setTimeout(AVT.rcTimeout, AVT.timeDelay); //stop the RC job after that time to prompt the user to continue
+    AVT.AYTtimer = setTimeout(AVT.rcTimeout, AVT.timeDelay); //stop the RC job after that time to prompt the user to continue
 
     //now, kick off the filter process
     AVT.rcDownloadFilter();
@@ -107,9 +114,16 @@ AVT.rcDownloadFilter=function(){
         success: function (response) {
             var edits = response.query.recentchanges; //an array of recent edits, containing several things but most importantly the revision ID for each change (revid)
             response.query.recentchanges.forEach( function (props, ind, array) {
-                if (props.title.contains("sandbox") || props.title.contains("Sandbox")) return; //filter out sandboxes up here, saves resources
-                if (props.type == "new") pendingNewPages.enqueue(props.revid); //if the edit is a page creation, queue it up with new pages as they are handled differently
-                    else pendingDiffs.enqueue(props.revid); //otherwise put it in the diff queue
+                var skip = 0;
+                for (var filter = 0; filter < AVTfilters.titleFilters.length; filter++) {
+                    if (props.title.search(AVTfilters.titleFilters[filter]) != -1) { //if the title matches the title filter, skip the queue
+                        skip = 1;
+                    }
+                }
+                if (!skip) { //if it didn't match the filter, queue it up
+                    if (props.type == "new") pendingNewPages.enqueue(props.revid); //if the edit is a page creation, queue it up with new pages as they are handled differently
+                            else pendingDiffs.enqueue(props.revid); //otherwise put it in the diff queue
+                }
             });
 
             //process the new page queue
@@ -269,26 +283,44 @@ AVT.processFilterDiff = function() {
                 url: "/w/api.php?action=query&prop=revisions&format=json&rvprop=ids%7Ctimestamp%7Cuser%7Cparsedcomment&rvdiffto=prev&revids=" + revid,
                 dataType: "JSON",
                 success: function (response) {
-                    var temp = response.query.pages;
-                    var keys = Object.keys(temp);
-                    var key = keys[0];
-                    temp = temp[key];
-                    title = temp.title;
-                    temp = temp.revisions[0]; //navigate down the JSON tree
+                    var temp;
+                    try {
+                        temp = response.query.pages;
+                        var keys = Object.keys(temp);
+                        var key = keys[0];
+                        temp = temp[key];
+                        title = temp.title;
+                        temp = temp.revisions[0]; //navigate down the JSON tree
 
-                    //chop the Z off the timestamp, parse it into local time, then chop the timezone off the end and parse again to set GMT
-                    timestamp.setTime(Date.parse(Date.parse(temp.timestamp.slice(0, -1)).toString().slice(0, 28)));
+                        //chop the Z off the timestamp, parse it into local time, then chop the timezone off the end and parse again to set GMT
+                        timestamp.setTime(Date.parse(Date.parse(temp.timestamp.slice(0, -1)).toString().slice(0, 28)));
 
-                    editor = temp.user;
-                    summary = temp.parsedcomment;
-                    temp = temp.diff;
-                    diff = temp["*"];
+                        editor = temp.user;
+                        summary = temp.parsedcomment;
+                        temp = temp.diff;
+                        diff = temp["*"];
+                    }
+                    catch (e) {
+                        console.error("Unexpected response from server. Response object follows:");
+                        console.error(response);
+                        console.log("Aborted due to error");
+                        if (pendingDiffs.isEmpty()) {
+                            //TODO: status update to "done"
+                            console.info("Diff queue is empty");
+                            return;
+                        } else {
+                            setTimeout(AVT.processFilterDiff, AVTconfig.readDelay);
+                            console.log("Diff queue length is: " + pendingDiffs.getLength());
+                            return;
+                        }
+                    }
 
                     if (AVT.whitelistCache.indexOf(editor) != -1) { //if the editor is in our whitelist cache, abort now
                         console.log("Editor whitelisted");
                         if (pendingDiffs.isEmpty()) {
                             //TODO: status update to "done"
                             console.info("Diff queue is empty");
+                            return;
                         } else {
                             setTimeout(AVT.processFilterDiff, AVTconfig.readDelay);
                             console.log("Diff queue length is: " + pendingDiffs.getLength());
@@ -393,7 +425,8 @@ AVT.processFilterDiff = function() {
 };
 
 AVT.diffDisplay = function(title, editor, timestamp, summary, matches, content, revid, isNewPage, isKnownVandal){ //function to generate and append the HTML to display a matching diff
-    var newHTML, rollbackToken, rollbackLink, dismissLink, wlDismissLink, temptime; //this function uses single quotes for strings for ease of dealing with HTML attributes
+    //this function uses single quotes for strings for ease of dealing with HTML attributes
+    var newHTML, rollbackToken, rollbackLink, dismissLink, wlDismissLink, dismissPriorLink, temptime;
     var timearray = new Array();
 
     if (!matches && !isknownVandal) return; //FIXME: why does matches come up null here from time to time? (and not on a known vandal)
@@ -412,9 +445,10 @@ AVT.diffDisplay = function(title, editor, timestamp, summary, matches, content, 
 
     dismissLink = '[<a href="javascript:AVT.dismiss(' + AVT.count + ')">dismiss</a>] ';
     wlDismissLink = '[<a href="javascript:AVT.wlAndDismiss(\'' + editor + '\', ' + AVT.count + ')">whitelist + dismiss</a>] ';
-    //we're saving it to add it again at the bottom
+    dismissPriorLink = '[<a href="javascript:AVT.dismissWithPrior(' + AVT.count + ')">dismiss + prior</a>] ';
+    //we're saving them to add again at the bottom
 
-    newHTML += dismissLink; //add dismiss link
+    newHTML += dismissLink + dismissPriorLink; //add dismiss links
 
     //parse out the time components
     timearray[0] = timestamp.getUTCHours().toString();
@@ -426,7 +460,7 @@ AVT.diffDisplay = function(title, editor, timestamp, summary, matches, content, 
 
     temptime = timearray.join(":"); //now join the pieces together
 
-    newHTML += temptime + ': '; //and add it
+    newHTML += temptime + ' UTC: '; //and add it
 
     if (isNewPage) {
         newHTML += 'New page '; //start the sentence with "new page"
@@ -475,7 +509,7 @@ AVT.diffDisplay = function(title, editor, timestamp, summary, matches, content, 
     newHTML += 'Summary: (<i>' + summary + '</i>)<br>'; //TODO: links in the summary open in current tab - need to add "target='_blank'" to each <a> tag in the summary
 
     //now the content to display. this is wrapped in its own id'd DIV to allow collapse/expand functionality
-    newHTML += '<div id="AVTextended' + AVT.count + '">' + content + dismissLink + wlDismissLink + rollbackLink + '</div>';
+    newHTML += '<div id="AVTextended' + AVT.count + '">' + content + dismissLink + wlDismissLink + dismissPriorLink + rollbackLink + '</div>';
 
     //now an HR to end the listing and close the outer DIV
     newHTML += '<br><hr></div>';
@@ -631,7 +665,7 @@ AVT.userLink = function(userName, pageType, artTitle, display) { //editor, what 
 
     if (pageType != "whitelist") HTML = '<a href="' + URL + '" target="_blank">' + display + '</a>';
         else HTML = '<a href="' + URL + '">' + display + '</a>'; //no target if JS link
-        
+
     return HTML;
 };
 
@@ -684,11 +718,13 @@ AVT.rollback = function(editor, revid) { //this function does NOT implement a ro
 AVT.pauseResume = function() {
     if (!AVT.paused) {
         AVT.paused = 1;
+        clearTimeout(AVT.AYTtimer); //stop the user-presence check timer
         $("#AVTpause").text("Resume updates");
     } else {
             AVT.paused = 0;
             console.info("AVT resuming");
-            $("AVTpause").text("Pause updates");
+            $("#AVTpause").text("Pause updates");
+            AVT.AYTtimer = setTimeout(AVT.rcTimeout, AVT.timeDelay); //restart the user-presence check timer
             AVT.rcDownloadFilter(); //re-trigger the AVT processing
         }
 };
@@ -701,6 +737,13 @@ AVT.addWhitelist = function(editor) {
 AVT.wlAndDismiss = function(editor, div) {
     AVT.addWhitelist(editor);
     AVT.dismiss(div);
+};
+
+AVT.dismissWithPrior = function(div) {
+    for (var q = div-1; q > 0; q--) { //start with the divs above, then dismiss the one we clicked on
+        $("#AVTdiff" + q).remove();
+    }
+    AVT.dismiss(div); //call dismiss function on the div we clicked on - that function includes scrolling to the next div
 };
 
 $(document).ready(AVT.onLoad); //trigger the initial script processing when the page is done loading
