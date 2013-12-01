@@ -705,6 +705,7 @@ AVT.rollback = function(editor, revid) { //this function does NOT implement a ro
             //assemble rollback link - links to rollback function for tracking
 
             var rollURL = "https://en.wikipedia.org/w/index.php?title=" + title + "&action=rollback&from=" + editor + "&token=" + encodeURIComponent(rollbackToken); //compose rollback URL
+            rollURL += "&summary=" + encodeURIComponent("Reverted edit(s) by [[Special:Contributions/" + editor + "|" + editor + "]] identified as vandalism ([[User:Darkwind/DAVT|DAVT]])");
             window.open(rollURL, "_blank"); //open it in a new page to perform the rollback
         }
     });
