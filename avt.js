@@ -220,7 +220,7 @@ AVT.processNewPageFilterDiff = function() {
                     matches = content.match(badWords); //get an array of the matches
                     content.replace(badWords, '<span style="background-color: yellow ! important">$&</span>'); //highlight each match in the content text for display
 
-                    AVT.diffDisplay(title, editor, timestamp, summary, matches, content, revid, 1); //call the function to add this revision to the user's display
+                    AVT.diffDisplay(title, editor, timestamp, summary, matches, content, revid, 1, false); //call the function to add this revision to the user's display
 
                     if (pendingNewPages.isEmpty()) {
                         //TODO: status update to "done"
