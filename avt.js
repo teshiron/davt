@@ -1,6 +1,7 @@
 /* Darkwind's Anti-Vandal Tool
  * Inspired by Lupin's Anti-Vandal Tool by [[User:Lupin]]
  * The RegEx generation function is from Lupin's Tool.
+ * Some of the functionality for the auto-warn feature is borrowed from Twinkle ([[WP:TW]])
  *
  * License: GFDL 1.3 or later*, CC-BY-SA-3.0*, or EPL 1.0 (your choice)
  */
@@ -25,7 +26,8 @@ AVT.onLoad=function(){
             editTypes: "edit|new", //a string, delimited by pipe, for the type of edits we want to monitor "edit|new" means both edits and new pages - completely remove types you don't want
             showByDefault: true, //show matching edits expanded by default? true=yes, show expanded, false=no, show them collapsed
             areYouThereTimeout: 60, //in minutes, how long before the tool stops and asks if you want to continue. 90 min. maximum, any higher value will be ignored.
-            popTalkAfterRollback: false //Do you want the vandals talk page to open in a popup/new tab after rollback?
+            popTalkAfterRollback: false, //Do you want the vandals talk page to open in a popup/new tab after rollback?
+            warningAge: 7 //in days, how long does a warning have to be before we consider it "stale" and start over?
         };
     }
 
@@ -50,6 +52,16 @@ AVT.onLoad=function(){
     AVT.whitelistCache = []; //and an array to cache our whitelist
 
     if (pageTitle.search("Filter") != -1) AVT.filterChanges(); //if page is DAVT/Filter, trigger Filter Changes procedure
+
+    //obtain an edit token
+    $.ajax({
+        url: "/w/api.php",
+        dataType: "JSON",
+        data: { action: "query", prop: "info", format: "json", intoken: "edit", titles: "User:Darkwind/DAVT" },
+        success: function (response) {
+            AVT.editToken = response.query.pages["40938264"].edittoken;
+        }
+    });
 
     //TODO: Implement live spellcheck and watchlist
 };
@@ -491,11 +503,13 @@ AVT.diffDisplay = function(title, editor, timestamp, summary, matches, content, 
     }
 
     //assemble rollback link - links to rollback function for tracking, save it for later to add to the bottom
-    var rollbackfrag = "javascript:AVT.rollback('" + editor + "', " + revid + ", " + AVT.count + ")";
+    var rollbackfrag = "javascript:AVT.rollback('" + editor + "', " + revid + ", " + AVT.count + ", false)"; //the "false" is whether to issue a warning or not
+    var warnfrag = "javascript:AVT.rollback('" + editor + "', " + revid + ", " + AVT.count + ", true)";
     rollbackLink = '[<a href="' + rollbackfrag + '">rollback</a>] ';
+    warnLink = '[<a href="' + warnfrag + '">revert and warn</a>] ';
 
     //add it to the HTML
-    newHTML += rollbackLink + '<br>'; //and go to second line
+    newHTML += rollbackLink + warnLink + '<br>'; //and go to second line
 
     if (isNewPage) {
         newHTML += 'Created by ';
@@ -511,7 +525,7 @@ AVT.diffDisplay = function(title, editor, timestamp, summary, matches, content, 
     newHTML += 'Summary: (<i>' + summary + '</i>)<br>'; //TODO: links in the summary open in current tab - need to add "target='_blank'" to each <a> tag in the summary
 
     //now the content to display. this is wrapped in its own id'd DIV to allow collapse/expand functionality
-    newHTML += '<div id="AVTextended' + AVT.count + '">' + content + dismissLink + wlDismissLink + dismissPriorLink + rollbackLink + '</div>';
+    newHTML += '<div id="AVTextended' + AVT.count + '">' + content + dismissLink + wlDismissLink + dismissPriorLink + rollbackLink + warnLink + '</div>';
 
     //now an HR to end the listing and close the outer DIV
     newHTML += '<br><hr></div>';
@@ -718,7 +732,7 @@ AVT.dismiss = function(div) {
         else AVTvandals[editor] = 1; //otherwise, create their entry, set to 1
 }; function is commented out to implement API rollback */
 
-AVT.rollback = function(editor, revid, divNumber) { //this function uses the API to roll back, which still requires the rollback right
+AVT.rollback = function(editor, revid, divNumber, warn) { //this function uses the API to roll back, which still requires the rollback right
     $("#AVTextended" + divNumber).children("table").remove(); //keep the extended div but clear the table and the vandal's diff
     $("#AVTextended" + divNumber).prepend('<div id="Rollback' + divNumber + '"><center id="Center' + divNumber + '">Attempting rollback...<br>Fetching token...</center></div>');
 
@@ -747,31 +761,137 @@ AVT.rollback = function(editor, revid, divNumber) { //this function uses the API
                         $("#Center" + divNumber).append("<span style='color:red'>Rollback failed with error: " + response.error.info + "</span>");
                     } else {
                         var temp2 = response.rollback;
-                        $("#Center" + divNumber).append("Done");
-                        var newHTML = "<p><center><b>Rollback results:</b></center><p><table>"; //label and open the table tag
+                        if (temp2.revid == temp2.old_revid) {
+                            $("#Center" + divNumber).append("Failed - no changes to roll back");
+                        } else {
+                            $("#Center" + divNumber).append("Done");
+                            var newHTML = "<p><center><b>Rollback results:</b></center><p><table>"; //label and open the table tag
 
-                        $.ajax({ //get the new diff
-                            url: "/w/api.php",
-                            dataType: "JSON",
-                            data: { action: "query", prop: "revisions", format: "json", revids: temp2.revid, rvdiffto: "prev" },
-                            success: function (response) {
-                                var temp3 = response.query.pages;
-                                var keys = Object.keys(temp3);
-                                var key = keys[0];
-                                temp3 = temp3[key];
-                                temp3 = temp3.revisions[0]; //navigate down the JSON tree
-                                temp3 = temp3.diff;
-                                var diff = temp3["*"];
+                            $.ajax({ //get the new diff
+                                url: "/w/api.php",
+                                dataType: "JSON",
+                                data: { action: "query", prop: "revisions", format: "json", revids: temp2.revid, rvdiffto: "prev" },
+                                success: function (response) {
+                                    var temp3 = response.query.pages;
+                                    var keys = Object.keys(temp3);
+                                    var key = keys[0];
+                                    temp3 = temp3[key];
+                                    temp3 = temp3.revisions[0]; //navigate down the JSON tree
+                                    temp3 = temp3.diff;
+                                    var diff = temp3["*"];
 
-                                newHTML += diff + "</table>"; //close the table tag
-                                $("#Rollback" + divNumber).append(newHTML); //add the HTML
+                                    newHTML += diff + "</table>"; //close the table tag
+                                    $("#Rollback" + divNumber).append(newHTML); //add the HTML
+                                }
+                            });
+
+                            //If option is set, pop a window with the vandal's talk page because the rollback was successful
+                            if (AVTconfig.popTalkAfterRollback) {
+                                var vandalTalk = "https://en.wikipedia.org/wiki/User_talk:" + editor + "?vanarticle=" + title;
+                                window.open(vandalTalk, "_blank");
                             }
-                        });
 
-                        //If option is set, pop a window with the vandal's talk page because the rollback was successful
-                        if (AVTconfig.popTalkAfterRollback) {
-                            var vandalTalk = "https://en.wikipedia.org/wiki/User_talk:" + editor + "?vanarticle=" + title;
-                            window.open(vandalTalk, "_blank");
+                            if (warn) { //code in this block is to automatically warn the vandal
+                                var talkExists, talkWikiText, newHeader, warnLevel;
+                                var date = new Date();
+                                var warningRegEx = /<!-- Template:uw-.*([1-4]) -->.*?(\d{1,2}:\d{1,2}, \d{1,2} \w+ \d{4}) \(UTC\)/g;
+                                var headerRegEx = new RegExp( "^==+\\s*(?:" + date.getUTCMonthName() + '|' + date.getUTCMonthNameAbbrev() + ")\\s+" + date.getUTCFullYear() + "\\s*==$(?![\\s\\S]*^==.+==$)", 'm' ); //will only match if current month's section header is the last section
+
+                                $("#Center" + divNumber).append("<br>Warning vandal...");
+
+                                $.ajax({ //attempt to download the talk page wikitext
+                                    url: "/w/api.php",
+                                    dataType: "JSON",
+                                    data: { action: "query", prop: "revisions", format: "json", rvprop: "content", titles: "User_talk:" + editor },
+                                    success: function (response) {
+                                        var temp4 = response.query.pages;
+                                        keys = Object.keys(temp4);
+                                        key = keys[0];
+                                        var latest = new Date(0);
+
+                                        if (key < 0) { //if the key (page ID) is negative, the page does not exist
+                                            talkExists = false;
+                                            newHeader = true;
+                                            warnLevel = 0;
+                                        } else {
+                                            var event;
+
+                                            talkExists = true;
+                                            temp4 = temp4[key];
+                                            temp4 = temp4.revisions[0]; //navigate down the JSON tree
+                                            talkWikiText = temp4["*"]; // * is the identifier for the wikitext
+
+                                            if (warningRegEx.test(talkWikiText)) {
+                                                while ((event = warningRegEx.exec(talkWikiText))) {
+                                                    event.date = Date.parse(event[2] + " UTC");
+                                                    if (event.date > latest.getTime()) {
+                                                        latest.setTime(event.date); //if the current event is later than the latest so far, update latest
+                                                        warnLevel = parseInt(event[1]);
+                                                    }
+                                                }
+                                                if ((date.getTime() - latest.getTime()) > (AVTconfig.warningAge * 86400000)) { //86,400,000 ms per day
+                                                    warnLevel = 0;
+                                                }
+                                            } else {
+                                                warnLevel = 0;
+                                            }
+
+                                            if (headerRegEx.test(talkWikiText)) {
+                                                newHeader = false;
+                                            } else {
+                                                newHeader = true;
+                                            }
+
+                                        }
+                                        warnLevel++; //the warnLevel was the level detected, now we need to bump it up one to issue the right warning
+                                        var newMessage = "\n";
+                                        var editSummary = "";
+                                        var abort = false;
+
+                                        if (newHeader) newMessage += "== " + date.getUTCMonthName() + " " + date.getUTCFullYear() + " ==\n"; //create a header if needed
+                                        newMessage += "{{subst:uw-vandalism" + warnLevel + "|" + title + "}} ~~~~";
+
+                                        switch (warnLevel) { //set appropriate edit summary
+                                            case 1:
+                                                editSummary += "Message regarding edits to [[" + title + "]] ([[User:Darkwind/DAVT|DAVT]])";
+                                                break;
+                                            case 2:
+                                                editSummary += "Unhelpful edits to [[" + title + "]] ([[User:Darkwind/DAVT|DAVT]])";
+                                                break;
+                                            case 3:
+                                                editSummary += "Caution: disruptive edits to [[" + title + "]] ([[User:Darkwind/DAVT|DAVT]])";
+                                                break;
+                                            case 4:
+                                                editSummary += "Final warning regarding edits to [[" + title + "]] ([[User:Darkwind/DAVT|DAVT]])";
+                                                break;
+                                            case 5:
+                                                $("#Center" + divNumber).append("<span style='color:red'>User already has a level 4 warning in the past " + AVTconfig.warningAge + " days. Warning aborted - consider ARV or block.</span>");
+                                                abort = true;
+                                                break;
+                                            default:
+                                                $("#Center" + divNumber).append("<span style='color:red'>Error: unexpected warnLevel value: " + warnLevel + "; Warning aborted.</span>");
+                                                abort = true;
+                                                break;
+                                        }
+
+                                        if (!abort) {
+                                            $.ajax({
+                                                url: "/w/api.php",
+                                                dataType: "JSON",
+                                                type: "POST",
+                                                data: { action: "edit", title: "User talk:" + editor, summary: editSummary, appendtext: newMessage, format: "json", token: AVT.editToken },
+                                                success: function (response) {
+                                                    if (response.edit.result == "Success") {
+                                                        $("#Center" + divNumber).append("Done");
+                                                    } else {
+                                                        $("#Center" + divNumber).append("Error: " + response.edit.result);
+                                                    }
+                                                }
+                                            });
+                                        }
+                                    }
+                                });
+                            }
                         }
                     }
                 },
