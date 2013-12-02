@@ -24,7 +24,8 @@ AVT.onLoad=function(){
             showTypes: "!minor|!bot", //a string, delimited by pipe, for which edits we want to monitor. prefix the type with a ! to hide those edits.
             editTypes: "edit|new", //a string, delimited by pipe, for the type of edits we want to monitor "edit|new" means both edits and new pages - completely remove types you don't want
             showByDefault: true, //show matching edits expanded by default? true=yes, show expanded, false=no, show them collapsed
-            areYouThereTimeout: 60 //in minutes, how long before the tool stops and asks if you want to continue. 90 min. maximum, any higher value will be ignored.
+            areYouThereTimeout: 60, //in minutes, how long before the tool stops and asks if you want to continue. 90 min. maximum, any higher value will be ignored.
+            popTalkAfterRollback: false //Do you want the vandals talk page to open in a popup/new tab after rollback?
         };
     }
 
@@ -490,7 +491,7 @@ AVT.diffDisplay = function(title, editor, timestamp, summary, matches, content, 
     }
 
     //assemble rollback link - links to rollback function for tracking, save it for later to add to the bottom
-    var rollbackfrag = "javascript:AVT.rollback('" + editor + "', " + revid + ")";
+    var rollbackfrag = "javascript:AVT.rollback('" + editor + "', " + revid + ", " + AVT.count + ")";
     rollbackLink = '[<a href="' + rollbackfrag + '">rollback</a>] ';
 
     //add it to the HTML
@@ -691,7 +692,7 @@ AVT.dismiss = function(div) {
     $("#AVTdiff" + (div + 1)).scrollintoview(); //scroll the subsequent div to the top of the page - will only work if you haven't been removing divs out of sequence
 };
 
-AVT.rollback = function(editor, revid) { //this function does NOT implement a rollback feature - this is used for vandal tracking
+/* AVT.rollback = function(editor, revid) { //this function does NOT implement a rollback feature - this is used for vandal tracking
     $.ajax({ //obtain a rollback token and pop a window to perform the rollback
         url: "/w/api.php?action=query&prop=revisions&format=json&rvtoken=rollback&revids=" + revid,
         dataType: "JSON",
@@ -713,6 +714,74 @@ AVT.rollback = function(editor, revid) { //this function does NOT implement a ro
 
 
     //regardless of whether or not the rollback succeeded, we want to track it
+    if (AVTvandals.hasOwnProperty(editor)) AVTvandals[editor] += 1; //if we've already recorded them, increment their rollback counter
+        else AVTvandals[editor] = 1; //otherwise, create their entry, set to 1
+}; function is commented out to implement API rollback */
+
+AVT.rollback = function(editor, revid, divNumber) { //this function uses the API to roll back, which still requires the rollback right
+    $("#AVTextended" + divNumber).children("table").remove(); //keep the extended div but clear the table and the vandal's diff
+    $("#AVTextended" + divNumber).prepend('<div id="Rollback' + divNumber + '"><center id="Center' + divNumber + '">Attempting rollback...<br>Fetching token...</center></div>');
+
+    $.ajax({ //obtain a rollback token and the page title
+        url: "/w/api.php?action=query&prop=revisions&format=json&rvtoken=rollback&revids=" + revid,
+        dataType: "JSON",
+        success: function (response) {
+            var temp = response.query.pages;
+            var keys = Object.keys(temp);
+            var key = keys[0];
+            temp = temp[key];
+            var title = temp.title;
+            temp = temp.revisions[0]; //navigate down the JSON tree
+            var rollbackToken = temp.rollbacktoken;
+
+            $("#Center" + divNumber).append("Done<br>Performing rollback...");
+
+            $.ajax({ //do the rollback
+                url: "/w/api.php?action=rollback&format=json",
+                dataType: "JSON",
+                type: "POST",
+                data: { user: editor, title: title, token: rollbackToken, summary: "Reverted edit(s) by [[Special:Contributions/" + editor + "|" + editor + "]] identified as vandalism ([[User:Darkwind/DAVT|DAVT]])" },
+                success: function (response) { //process the response from our attempted rollback
+                    if (response.hasOwnProperty("error")) {
+                        //display the error, which is in the string response.error.info
+                        $("#Center" + divNumber).append("<span style='color:red'>Rollback failed with error: " + response.error.info + "</span>");
+                    } else {
+                        var temp2 = response.rollback;
+                        $("#Center" + divNumber).append("Done");
+                        var newHTML = "<p><center><b>Rollback results:</b></center><p><table>"; //label and open the table tag
+
+                        $.ajax({ //get the new diff
+                            url: "/w/api.php",
+                            dataType: "JSON",
+                            data: { action: "query", prop: "revisions", format: "json", revids: temp2.revid, rvdiffto: "prev" },
+                            success: function (response) {
+                                var temp3 = response.query.pages;
+                                var keys = Object.keys(temp3);
+                                var key = keys[0];
+                                temp3 = temp3[key];
+                                temp3 = temp3.revisions[0]; //navigate down the JSON tree
+                                temp3 = temp3.diff;
+                                var diff = temp3["*"];
+
+                                newHTML += diff + "</table>"; //close the table tag
+                                $("#Rollback" + divNumber).append(newHTML); //add the HTML
+                            }
+                        });
+
+                        //If option is set, pop a window with the vandal's talk page because the rollback was successful
+                        if (AVTconfig.popTalkAfterRollback) {
+                            var vandalTalk = "https://en.wikipedia.org/wiki/User_talk:" + editor + "?vanarticle=" + title;
+                            window.open(vandalTalk, "_blank");
+                        }
+                    }
+                },
+                error: function( xhr ) {
+                    alert( 'Error: Request failed.' );
+                }
+            });
+        }
+    });
+
     if (AVTvandals.hasOwnProperty(editor)) AVTvandals[editor] += 1; //if we've already recorded them, increment their rollback counter
         else AVTvandals[editor] = 1; //otherwise, create their entry, set to 1
 };
