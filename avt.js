@@ -734,7 +734,7 @@ AVT.dismiss = function(div) {
 
 AVT.rollback = function(editor, revid, divNumber, warn) { //this function uses the API to roll back, which still requires the rollback right
     $("#AVTextended" + divNumber).children("table").remove(); //keep the extended div but clear the table and the vandal's diff
-    $("#AVTextended" + divNumber).prepend('<div id="Rollback' + divNumber + '"><center id="Center' + divNumber + '">Attempting rollback...<br>Fetching token...</center></div>');
+    $("#AVTextended" + divNumber).prepend('<div id="Rollback' + divNumber + '"><center id="Center' + divNumber + '">Attempting rollback:<br>Fetching token...</center></div>');
 
     $.ajax({ //obtain a rollback token and the page title
         url: "/w/api.php?action=query&prop=revisions&format=json&rvtoken=rollback&revids=" + revid,
@@ -761,8 +761,8 @@ AVT.rollback = function(editor, revid, divNumber, warn) { //this function uses t
                         $("#Center" + divNumber).append("<span style='color:red'>Rollback failed with error: " + response.error.info + "</span>");
                     } else {
                         var temp2 = response.rollback;
-                        if (temp2.revid == temp2.old_revid) {
-                            $("#Center" + divNumber).append("Failed - no changes to roll back");
+                        if (temp2.revid === 0) {
+                            $("#Center" + divNumber).append("<span style='color:red'>Failed: no changes were made - likely self-revert</span>");
                         } else {
                             $("#Center" + divNumber).append("Done");
                             var newHTML = "<p><center><b>Rollback results:</b></center><p><table>"; //label and open the table tag
@@ -882,7 +882,7 @@ AVT.rollback = function(editor, revid, divNumber, warn) { //this function uses t
                                                 data: { action: "edit", title: "User talk:" + editor, summary: editSummary, appendtext: newMessage, format: "json", token: AVT.editToken },
                                                 success: function (response) {
                                                     if (response.edit.result == "Success") {
-                                                        $("#Center" + divNumber).append("Done");
+                                                        $("#Center" + divNumber).append("Done at warning level " + warnLevel);
                                                     } else {
                                                         $("#Center" + divNumber).append("Error: " + response.edit.result);
                                                     }
