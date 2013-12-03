@@ -27,7 +27,9 @@ AVT.onLoad=function(){
             showByDefault: true, //show matching edits expanded by default? true=yes, show expanded, false=no, show them collapsed
             areYouThereTimeout: 60, //in minutes, how long before the tool stops and asks if you want to continue. 90 min. maximum, any higher value will be ignored.
             popTalkAfterRollback: false, //Do you want the vandals talk page to open in a popup/new tab after rollback?
-            warningAge: 7 //in days, how long does a warning have to be before we consider it "stale" and start over?
+            warningAge: 7, //in days, how long does a warning have to be before we consider it "stale" and start over?
+            welcomeAnon: true, //welcome anonymous users (with welcome-anon-unconstructive) if talk page doesn't exist?
+            welcomeReg: true, //welcome registered users (with welcomevandal) when talk page doesn't exist?
         };
     }
 
@@ -733,28 +735,37 @@ AVT.dismiss = function(div) {
 }; function is commented out to implement API rollback */
 
 AVT.rollback = function(editor, revid, divNumber, warn) { //this function uses the API to roll back, which still requires the rollback right
-    $("#AVTextended" + divNumber).children("table").remove(); //keep the extended div but clear the table and the vandal's diff
+    $("#AVTextended" + divNumber).children("table").remove(); //keep the extended div but clear the table with the vandal's diff
     $("#AVTextended" + divNumber).prepend('<div id="Rollback' + divNumber + '"><center id="Center' + divNumber + '">Attempting rollback:<br>Fetching token...</center></div>');
 
-    $.ajax({ //obtain a rollback token and the page title
-        url: "/w/api.php?action=query&prop=revisions&format=json&rvtoken=rollback&revids=" + revid,
+    $.ajax({ //obtain a rollback token, the page title, and the editor's status (registered or anon)
+        url: "/w/api.php",
         dataType: "JSON",
+        data: {
+            action: "query",
+            prop: "revisions",
+            format: "json",
+            rvtoken: "rollback",
+            revids: revid
+        },
         success: function (response) {
-            var temp = response.query.pages;
-            var keys = Object.keys(temp);
-            var key = keys[0];
-            temp = temp[key];
-            var title = temp.title;
-            temp = temp.revisions[0]; //navigate down the JSON tree
-            var rollbackToken = temp.rollbacktoken;
+            var isAnon;
+            var key = Object.keys(response.query.pages)[0];
+            var rollbackToken = response.query.pages[key].revisions[0].rollbacktoken;
+            var title = response.query.pages[key].title;
+            if (response.query.pages[key].revisions[0].hasOwnProperty("anon")) {
+                isAnon = true;
+            } else {
+                isAnon = false;
+            }
 
             $("#Center" + divNumber).append("Done<br>Performing rollback...");
 
             $.ajax({ //do the rollback
-                url: "/w/api.php?action=rollback&format=json",
+                url: "/w/api.php",
                 dataType: "JSON",
                 type: "POST",
-                data: { user: editor, title: title, token: rollbackToken, summary: "Reverted edit(s) by [[Special:Contributions/" + editor + "|" + editor + "]] identified as vandalism ([[User:Darkwind/DAVT|DAVT]])" },
+                data: { action: "rollback", format: "json", user: editor, title: title, token: rollbackToken, summary: "Reverted edit(s) by [[Special:Contributions/" + editor + "|" + editor + "]] identified as vandalism ([[User:Darkwind/DAVT|DAVT]])" },
                 success: function (response) { //process the response from our attempted rollback
                     if (response.hasOwnProperty("error")) {
                         //display the error, which is in the string response.error.info
@@ -847,31 +858,59 @@ AVT.rollback = function(editor, revid, divNumber, warn) { //this function uses t
                                         var newMessage = "\n";
                                         var editSummary = "";
                                         var abort = false;
+                                        var welcoming = false;
+                                        var templateName = "";
 
-                                        if (newHeader) newMessage += "== " + date.getUTCMonthName() + " " + date.getUTCFullYear() + " ==\n"; //create a header if needed
-                                        newMessage += "{{subst:uw-vandalism" + warnLevel + "|" + title + "}} ~~~~";
+                                        if (newHeader && talkExists) newMessage += "== " + date.getUTCMonthName() + " " + date.getUTCFullYear() + " ==\n"; //create a header if needed
 
-                                        switch (warnLevel) { //set appropriate edit summary
-                                            case 1:
-                                                editSummary += "Message regarding edits to [[" + title + "]] ([[User:Darkwind/DAVT|DAVT]])";
-                                                break;
-                                            case 2:
-                                                editSummary += "Unhelpful edits to [[" + title + "]] ([[User:Darkwind/DAVT|DAVT]])";
-                                                break;
-                                            case 3:
-                                                editSummary += "Caution: disruptive edits to [[" + title + "]] ([[User:Darkwind/DAVT|DAVT]])";
-                                                break;
-                                            case 4:
-                                                editSummary += "Final warning regarding edits to [[" + title + "]] ([[User:Darkwind/DAVT|DAVT]])";
-                                                break;
-                                            case 5:
-                                                $("#Center" + divNumber).append("<span style='color:red'>User already has a level 4 warning in the past " + AVTconfig.warningAge + " days. Warning aborted - consider ARV or block.</span>");
-                                                abort = true;
-                                                break;
-                                            default:
-                                                $("#Center" + divNumber).append("<span style='color:red'>Error: unexpected warnLevel value: " + warnLevel + "; Warning aborted.</span>");
-                                                abort = true;
-                                                break;
+                                        if (talkExists) {
+                                            templateName = "uw-vandalism"; //if the talk page exists, we don't need to worry about welcome settings - just use uw-vandalism series
+                                        } else { //the talk page doesn't exist, so we need to check anon status and appropriate config setting to see if we're welcoming or warning
+                                            if (isAnon) {
+                                                if (AVTconfig.welcomeAnon) { //user is anon (isAnon = true) - do we welcome anon users?
+                                                    templateName = "welcome-anon-unconstructive"; //yes (true)
+                                                    welcoming = true;
+                                                } else {
+                                                    templateName = "uw-vandalism"; //no (false)
+                                                }
+                                            } else {
+                                                if (AVTconfig.welcomeReg) { //user is registered (isAnon = false) - do we welcome registered users?
+                                                    templateName = "welcomevandal"; //yes (true)
+                                                    welcoming = true;
+                                                } else {
+                                                    templateName = "uw-vandalism"; //no (false)
+                                                }
+                                            }
+                                        }
+
+                                        if (!welcoming) {
+                                            newMessage += "{{subst:" + templateName + warnLevel + "|" + title + "}} ~~~~";
+
+                                            switch (warnLevel) { //set appropriate edit summary
+                                                case 1:
+                                                    editSummary += "Message regarding edits to [[" + title + "]] ([[User:Darkwind/DAVT|DAVT]])";
+                                                    break;
+                                                case 2:
+                                                    editSummary += "Unhelpful edits to [[" + title + "]] ([[User:Darkwind/DAVT|DAVT]])";
+                                                    break;
+                                                case 3:
+                                                    editSummary += "Caution: disruptive edits to [[" + title + "]] ([[User:Darkwind/DAVT|DAVT]])";
+                                                    break;
+                                                case 4:
+                                                    editSummary += "Final warning regarding edits to [[" + title + "]] ([[User:Darkwind/DAVT|DAVT]])";
+                                                    break;
+                                                case 5:
+                                                    $("#Center" + divNumber).append("<span style='color:red'>User already has a level 4 warning in the past " + AVTconfig.warningAge + " days. Warning aborted - consider ARV or block.</span>");
+                                                    abort = true;
+                                                    break;
+                                                default:
+                                                    $("#Center" + divNumber).append("<span style='color:red'>Error: unexpected warnLevel value: " + warnLevel + "; Warning aborted.</span>");
+                                                    abort = true;
+                                                    break;
+                                            }
+                                        } else {
+                                            newMessage += "{{subst:" + templateName + "|" + title + "}}"; //neither warning level nor signature apply to welcoming templates
+                                            editSummary += "Welcome to Wikipedia ([[User:Darkwind/DAVT|DAVT]])";
                                         }
 
                                         if (!abort) {
@@ -882,7 +921,11 @@ AVT.rollback = function(editor, revid, divNumber, warn) { //this function uses t
                                                 data: { action: "edit", title: "User talk:" + editor, summary: editSummary, appendtext: newMessage, format: "json", token: AVT.editToken },
                                                 success: function (response) {
                                                     if (response.edit.result == "Success") {
-                                                        $("#Center" + divNumber).append("Done at warning level " + warnLevel);
+                                                        if (!welcoming) {
+                                                            $("#Center" + divNumber).append("Done at warning level " + warnLevel);
+                                                        } else {
+                                                            $("#Center" + divNumber).append("Welcomed user");
+                                                        }
                                                     } else {
                                                         $("#Center" + divNumber).append("Error: " + response.edit.result);
                                                     }
