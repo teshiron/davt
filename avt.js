@@ -29,7 +29,7 @@ AVT.onLoad=function(){
             popTalkAfterRollback: false, //Do you want the vandals talk page to open in a popup/new tab after rollback?
             warningAge: 7, //in days, how long does a warning have to be before we consider it "stale" and start over?
             welcomeAnon: true, //welcome anonymous users (with welcome-anon-unconstructive) if talk page doesn't exist?
-            welcomeReg: true, //welcome registered users (with welcomevandal) when talk page doesn't exist?
+            welcomeReg: true //welcome registered users (with welcomevandal) when talk page doesn't exist?
         };
     }
 
@@ -445,7 +445,7 @@ AVT.diffDisplay = function(title, editor, timestamp, summary, matches, content, 
     var newHTML, rollbackToken, rollbackLink, dismissLink, wlDismissLink, dismissPriorLink, temptime;
     var timearray = new Array();
 
-    if (!matches && !isknownVandal) return; //FIXME: why does matches come up null here from time to time? (and not on a known vandal)
+    if (!matches && !isKnownVandal) return; //FIXME: why does matches come up null here from time to time? (and not on a known vandal)
 
     AVT.count++;
 
@@ -504,14 +504,15 @@ AVT.diffDisplay = function(title, editor, timestamp, summary, matches, content, 
         newHTML += (isNewPage ? 'created' : 'performed') + ' by <span style="font-color: red"><b>an editor you rolled back ' + kvCount + ' time' + (kvcount > 1 ? 's.' : '.') + ' </b></span> ';
     }
 
-    //assemble rollback link - links to rollback function for tracking, save it for later to add to the bottom
-    var rollbackfrag = "javascript:AVT.rollback('" + editor + "', " + revid + ", " + AVT.count + ", false)"; //the "false" is whether to issue a warning or not
-    var warnfrag = "javascript:AVT.rollback('" + editor + "', " + revid + ", " + AVT.count + ", true)";
-    rollbackLink = '[<a href="' + rollbackfrag + '">rollback</a>] ';
-    warnLink = '[<a href="' + warnfrag + '">revert and warn</a>] ';
+    //assemble line of links to rollback function, save it for later to add to the bottom
+    //signature for rollback function is (editor, revid, divNumber, warnType)
+    var rollbackfrag = "[<a href=\"javascript:AVT.rollback('" + editor + "', " + revid + ", " + AVT.count + ", "; //string is not closed to allow multiple warntypes
+
+    var rollbackLine = "<br>" + rollbackfrag + "'none')\">rollback only</a>] Revert and warn: " + rollbackfrag + "'vandalism')\">vandalism</a>] " + rollbackfrag + "'test')\">test edit</a>] ";
+    rollbackLine += rollbackfrag + "'delete')\">blanking</a>] " + rollbackfrag + "'joke')\">joke</a>] " + rollbackfrag + "'biog')\">BLP</a>] " + rollbackfrag + "'defam')\">defamation</a>] ";
 
     //add it to the HTML
-    newHTML += rollbackLink + warnLink + '<br>'; //and go to second line
+    newHTML += rollbackLine + '<br>'; //and go to second line
 
     if (isNewPage) {
         newHTML += 'Created by ';
@@ -527,7 +528,7 @@ AVT.diffDisplay = function(title, editor, timestamp, summary, matches, content, 
     newHTML += 'Summary: (<i>' + summary + '</i>)<br>'; //TODO: links in the summary open in current tab - need to add "target='_blank'" to each <a> tag in the summary
 
     //now the content to display. this is wrapped in its own id'd DIV to allow collapse/expand functionality
-    newHTML += '<div id="AVTextended' + AVT.count + '">' + content + dismissLink + wlDismissLink + dismissPriorLink + rollbackLink + warnLink + '</div>';
+    newHTML += '<div id="AVTextended' + AVT.count + '">' + content + dismissLink + wlDismissLink + dismissPriorLink + rollbackLine + '</div>';
 
     //now an HR to end the listing and close the outer DIV
     newHTML += '<br><hr></div>';
@@ -708,35 +709,43 @@ AVT.dismiss = function(div) {
     $("#AVTdiff" + (div + 1)).scrollintoview(); //scroll the subsequent div to the top of the page - will only work if you haven't been removing divs out of sequence
 };
 
-/* AVT.rollback = function(editor, revid) { //this function does NOT implement a rollback feature - this is used for vandal tracking
-    $.ajax({ //obtain a rollback token and pop a window to perform the rollback
-        url: "/w/api.php?action=query&prop=revisions&format=json&rvtoken=rollback&revids=" + revid,
-        dataType: "JSON",
-        success: function (response) {
-            var temp = response.query.pages;
-            var keys = Object.keys(temp);
-            var key = keys[0];
-            temp = temp[key];
-            var title = temp.title;
-            temp = temp.revisions[0]; //navigate down the JSON tree
-            var rollbackToken = temp.rollbacktoken;
-            //assemble rollback link - links to rollback function for tracking
+AVT.rollback = function(editor, revid, divNumber, warnType) { //this function uses the API to roll back, which still requires the rollback right
+    //warnType is a string, valid values are "none", "vandalism", "test", "delete" (blanking), "joke", "biog" (BLP vios), "defam" (defamatory content)
+    var warningPriority = false; //boolean to use to indicate the type of warning takes precedence over welcoming
 
-            var rollURL = "https://en.wikipedia.org/w/index.php?title=" + title + "&action=rollback&from=" + editor + "&token=" + encodeURIComponent(rollbackToken); //compose rollback URL
-            rollURL += "&summary=" + encodeURIComponent("Reverted edit(s) by [[Special:Contributions/" + editor + "|" + editor + "]] identified as vandalism ([[User:Darkwind/DAVT|DAVT]])");
-            window.open(rollURL, "_blank"); //open it in a new page to perform the rollback
-        }
-    });
-
-
-    //regardless of whether or not the rollback succeeded, we want to track it
-    if (AVTvandals.hasOwnProperty(editor)) AVTvandals[editor] += 1; //if we've already recorded them, increment their rollback counter
-        else AVTvandals[editor] = 1; //otherwise, create their entry, set to 1
-}; function is commented out to implement API rollback */
-
-AVT.rollback = function(editor, revid, divNumber, warn) { //this function uses the API to roll back, which still requires the rollback right
     $("#AVTextended" + divNumber).children("table").remove(); //keep the extended div but clear the table with the vandal's diff
     $("#AVTextended" + divNumber).prepend('<div id="Rollback' + divNumber + '"><center id="Center' + divNumber + '">Attempting rollback:<br>Fetching token...</center></div>');
+
+    var rollbackSummary = "Reverted edit(s) by [[Special:Contributions/" + editor + "|" + editor + "]] identified as ";
+
+    switch (warnType) {
+        case "none":
+        case "vandalism":
+            rollbackSummary += "vandalism ";
+            break;
+        case "test":
+            rollbackSummary += "test edit(s) ";
+            break;
+        case "delete":
+            rollbackSummary += "unexplained content removal ";
+            break;
+        case "joke":
+            rollbackSummary += "vandalism (joke edit(s)) ";
+            break;
+        case "biog":
+            rollbackSummary += "[[WP:BLP|BLP]] violation ";
+            warningPriority = true;
+            break;
+        case "defam":
+            rollbackSummary += "[[WP:LIBEL|libelous or defamatory content]] ";
+            warningPriority = true;
+            break;
+        default:
+            alert("Unexpected value of warnType");
+            return;
+    }
+
+    rollbackSummary += "([[User:Darkwind/DAVT|DAVT]])"; //mini-ad for the tool
 
     $.ajax({ //obtain a rollback token, the page title, and the editor's status (registered or anon)
         url: "/w/api.php",
@@ -765,7 +774,7 @@ AVT.rollback = function(editor, revid, divNumber, warn) { //this function uses t
                 url: "/w/api.php",
                 dataType: "JSON",
                 type: "POST",
-                data: { action: "rollback", format: "json", user: editor, title: title, token: rollbackToken, summary: "Reverted edit(s) by [[Special:Contributions/" + editor + "|" + editor + "]] identified as vandalism ([[User:Darkwind/DAVT|DAVT]])" },
+                data: { action: "rollback", format: "json", user: editor, title: title, token: rollbackToken, summary: rollbackSummary },
                 success: function (response) { //process the response from our attempted rollback
                     if (response.hasOwnProperty("error")) {
                         //display the error, which is in the string response.error.info
@@ -796,13 +805,13 @@ AVT.rollback = function(editor, revid, divNumber, warn) { //this function uses t
                                 }
                             });
 
-                            //If option is set, pop a window with the vandal's talk page because the rollback was successful
-                            if (AVTconfig.popTalkAfterRollback) {
+                            //If option is set, pop a window with the vandal's talk page because the rollback was successful - but only for non-warn rollbacks
+                            if (AVTconfig.popTalkAfterRollback && warnType == "none") {
                                 var vandalTalk = "https://en.wikipedia.org/wiki/User_talk:" + editor + "?vanarticle=" + title;
                                 window.open(vandalTalk, "_blank");
                             }
 
-                            if (warn) { //code in this block is to automatically warn the vandal
+                            if (warnType != "none") { //automatically issue a warning if requested
                                 var talkExists, talkWikiText, newHeader, warnLevel;
                                 var date = new Date();
                                 var warningRegEx = /<!-- Template:uw-.*([1-4]) -->.*?(\d{1,2}:\d{1,2}, \d{1,2} \w+ \d{4}) \(UTC\)/g;
@@ -837,7 +846,7 @@ AVT.rollback = function(editor, revid, divNumber, warn) { //this function uses t
                                                     event.date = Date.parse(event[2] + " UTC");
                                                     if (event.date > latest.getTime()) {
                                                         latest.setTime(event.date); //if the current event is later than the latest so far, update latest
-                                                        warnLevel = parseInt(event[1]);
+                                                        warnLevel = parseInt(event[1], 10); //10 = base 10 (radix)
                                                     }
                                                 }
                                                 if ((date.getTime() - latest.getTime()) > (AVTconfig.warningAge * 86400000)) { //86,400,000 ms per day
@@ -852,8 +861,8 @@ AVT.rollback = function(editor, revid, divNumber, warn) { //this function uses t
                                             } else {
                                                 newHeader = true;
                                             }
-
                                         }
+
                                         warnLevel++; //the warnLevel was the level detected, now we need to bump it up one to issue the right warning
                                         var newMessage = "\n";
                                         var editSummary = "";
@@ -861,24 +870,27 @@ AVT.rollback = function(editor, revid, divNumber, warn) { //this function uses t
                                         var welcoming = false;
                                         var templateName = "";
 
-                                        if (newHeader && talkExists) newMessage += "== " + date.getUTCMonthName() + " " + date.getUTCFullYear() + " ==\n"; //create a header if needed
-
-                                        if (talkExists) {
-                                            templateName = "uw-vandalism"; //if the talk page exists, we don't need to worry about welcome settings - just use uw-vandalism series
+                                        if (talkExists || warningPriority) { //if the talk page exists or we're issuing a priority warning, we don't need to worry about welcome settings
+                                            templateName = "uw-" + warnType;
+                                            if (newHeader) {
+                                                newMessage += "== " + date.getUTCMonthName() + " " + date.getUTCFullYear() + " ==\n"; //create a header if needed
+                                            } else {
+                                                newMessage += "\n"; //start with two newlines in case of pre-existing talk and no header (to create proper spacing)
+                                            }
                                         } else { //the talk page doesn't exist, so we need to check anon status and appropriate config setting to see if we're welcoming or warning
                                             if (isAnon) {
                                                 if (AVTconfig.welcomeAnon) { //user is anon (isAnon = true) - do we welcome anon users?
                                                     templateName = "welcome-anon-unconstructive"; //yes (true)
                                                     welcoming = true;
                                                 } else {
-                                                    templateName = "uw-vandalism"; //no (false)
+                                                    templateName = "uw-" + warnType; //no (false)
                                                 }
                                             } else {
                                                 if (AVTconfig.welcomeReg) { //user is registered (isAnon = false) - do we welcome registered users?
                                                     templateName = "welcomevandal"; //yes (true)
                                                     welcoming = true;
                                                 } else {
-                                                    templateName = "uw-vandalism"; //no (false)
+                                                    templateName = "uw-" + warnType; //no (false)
                                                 }
                                             }
                                         }
@@ -922,7 +934,7 @@ AVT.rollback = function(editor, revid, divNumber, warn) { //this function uses t
                                                 success: function (response) {
                                                     if (response.edit.result == "Success") {
                                                         if (!welcoming) {
-                                                            $("#Center" + divNumber).append("Done at warning level " + warnLevel);
+                                                            $("#Center" + divNumber).append("Done with template " + templateName + warnLevel);
                                                         } else {
                                                             $("#Center" + divNumber).append("Welcomed user");
                                                         }
