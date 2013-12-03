@@ -430,7 +430,7 @@ AVT.diffDisplay = function(title, editor, timestamp, summary, matches, content, 
     var newHTML, rollbackToken, rollbackLink, dismissLink, wlDismissLink, dismissPriorLink, temptime;
     var timearray = new Array();
 
-    if (!matches && !isknownVandal) return; //FIXME: why does matches come up null here from time to time? (and not on a known vandal)
+    if (!matches && !isKnownVandal) return; //FIXME: why does matches come up null here from time to time? (and not on a known vandal)
 
     AVT.count++;
 
