@@ -40,7 +40,7 @@ AVT.onLoad=function(){
             //The list of user groups can be found at [[Special:ListUsers]] in the dropdown box, or at [[WP:RIGHTS]].
             editCountFilterOn: true, //filter based on user's edit count?
             editCountFilter: 200, //how many edits will exempt the user? 200 is default because that's enough to enroll in [[WP:CVUA]].
-            titleFilters: [/[Ss]andbox/, /TWA/] //a list of regular expressions or strings we want to filter out of titles - if title matches, it won't be checked
+            titleFilters: [/[Ss]andbox/, /User.*TWA/] //a list of regular expressions or strings we want to filter out of titles - if title matches, it won't be checked
         };
     }
 
