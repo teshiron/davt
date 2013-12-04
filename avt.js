@@ -6,8 +6,35 @@
  * License: GFDL 1.3 or later*, CC-BY-SA-3.0*, or EPL 1.0 (your choice)
  */
 
-var AVT = new Object();
-var AVTvandals = new Object();
+/* Configuration options:
+ * See [[User:Darkwind/DAVT]] for full config instructions.
+ *
+ * Main options:
+ * batchDelay: in seconds, how often should a new batch of diffs be processed? default of 30 mimics Lupin's AVT
+ * diffDelay: in seconds, how old must an edit be before we check it? this helps avoid showing edits that ClueBotNG is about to undo, for example.
+ *            This replaces "unchanged after 4 updates" option from LAVT.
+ * readDelay: in milliseconds, how long should we wait in between API calls? Note that this is not a strict rate limit.
+ * namespaces: a string, delimited by pipe, for which namespaces we want to monitor. See [[Wikipedia:Namespace]] for the list.
+ * showTypes: a string, delimited by pipe, for which edits we want to monitor. prefix the type with a ! to hide those edits.
+ * editTypes: a string, delimited by pipe, for the type of edits we want to monitor "edit|new" means both edits and new pages - completely remove types you don't want
+ * showByDefault: show matching edits expanded by default? true=yes, show expanded, false=no, show them collapsed
+ * areYouThereTimeout: in minutes, how long before the tool stops and asks if you want to continue. 90 min. maximum, any higher value will be ignored.
+ * popTalkAfterRollback: Do you want the vandal's talk page to open in a popup/new tab after a rollback without warning?
+ * warningAge: in days, how old does a previous warning have to be before we consider it "stale" and start over at level 1?
+ * welcomeAnon: welcome anonymous users (with Template:Welcome-anon-unconstructive) instead of warning if talk page doesn't exist?
+ * welcomeReg: welcome registered users (with Template:Welcomevandal) instead of warning if talk page doesn't exist?
+ *
+ * Filter options:
+ * groupFilterOn: Boolean option to control whether to filter by user groups
+ * groupFilter: User groups to filter out if groupFilterOn is true. Notated as an array of strings.
+ *              The list of user groups can be found at [[Special:ListUsers]] in the dropdown box, or at [[WP:RIGHTS]].
+ * editCountFilterOn: Boolean option to control whether to filter by edit count
+ * editCountFilter: Edit count threshold to filter out if editCountFilterOn is true.  Default is 200 as that's the minimum required to join CVUA
+ * titleFilters: An array of strings or regular expressions to match against the title of each page; matches are filtered out. This cannot be disabled.
+ */
+
+var AVT = {};
+var AVTvandals = {};
 var AVTconfig, AVTfilters;
 
 AVT.onLoad=function(){
@@ -15,37 +42,34 @@ AVT.onLoad=function(){
     var pageTitle = mw.config.get("wgTitle");
     if (pageTitle.search("DAVT") == -1) return; //only run on pages containing the string DAVT
 
-    // now that we know to run the tool, set default config if the user doesn't already have settings in their *.js file
-    if (!AVTconfig) {
-        AVTconfig = {
-            batchDelay: 30, //in seconds, how often should a new batch of diffs be processed? default of 30 mimics Lupin's AVT
-            diffDelay: 90, //in seconds, how old is the newest edit we'll check? this helps avoid showing edits that ClueBotNG is about to undo, for example. This replaces "unchanged after 4 updates" option from LAVT.
-            readDelay: 250, //in milliseconds, how long should we wait in between API calls? Note that this is not a strict rate limit.
-            namespaces: "0|2", //a string, delimited by pipe, for which namespaces we want to monitor. See [[Wikipedia:Namespace]] for the list.
-            showTypes: "!minor|!bot", //a string, delimited by pipe, for which edits we want to monitor. prefix the type with a ! to hide those edits.
-            editTypes: "edit|new", //a string, delimited by pipe, for the type of edits we want to monitor "edit|new" means both edits and new pages - completely remove types you don't want
-            showByDefault: true, //show matching edits expanded by default? true=yes, show expanded, false=no, show them collapsed
-            areYouThereTimeout: 60, //in minutes, how long before the tool stops and asks if you want to continue. 90 min. maximum, any higher value will be ignored.
-            popTalkAfterRollback: false, //Do you want the vandals talk page to open in a popup/new tab after rollback?
-            warningAge: 7, //in days, how long does a warning have to be before we consider it "stale" and start over?
-            welcomeAnon: true, //welcome anonymous users (with welcome-anon-unconstructive) if talk page doesn't exist?
-            welcomeReg: true //welcome registered users (with welcomevandal) when talk page doesn't exist?
-        };
-    }
+    // now that we know to run the tool, set default value for each configuration setting if user does not specify it in their *.js file
 
-    if (!AVTfilters) {
-        AVTfilters = { //anyone matching active filters in this section is "whitelisted" from the tool, and their edits will not appear
-            groupFilterOn: false, //filter based on user groups?
-            groupFilter: ["sysop", "bureaucrat"], //a list of user groups to whitelist, notated as a JavaScript array of strings.
-            //The list of user groups can be found at [[Special:ListUsers]] in the dropdown box, or at [[WP:RIGHTS]].
-            editCountFilterOn: true, //filter based on user's edit count?
-            editCountFilter: 200, //how many edits will exempt the user? 200 is default because that's enough to enroll in [[WP:CVUA]].
-            titleFilters: [/[Ss]andbox/, /User.*TWA/] //a list of regular expressions or strings we want to filter out of titles - if title matches, it won't be checked
-        };
-    }
+    if (!AVTconfig) AVTconfig = {}; //first, check to see if any options are defined at all. If not, we have to initialize with an empty object.
+    if (!AVTfilters) AVTfilters = {}; //same with the filters
 
-     //the following item is required in the title filter list to prevent the bug in issue #18
-     //since it is a bug fix, we don't keep it in the editable title filter list
+    // Main configuration:
+    if (!AVTconfig.hasOwnProperty("batchDelay")) AVTconfig.batchDelay = 30;
+    if (!AVTconfig.hasOwnProperty("diffDelay")) AVTconfig.diffDelay = 90;
+    if (!AVTconfig.hasOwnProperty("readDelay")) AVTconfig.readDelay = 250;
+    if (!AVTconfig.hasOwnProperty("namespaces")) AVTconfig.namespaces = "0|2";
+    if (!AVTconfig.hasOwnProperty("showTypes")) AVTconfig.showTypes = "!minor|!bot";
+    if (!AVTconfig.hasOwnProperty("editTypes")) AVTconfig.editTypes = "edit|new";
+    if (!AVTconfig.hasOwnProperty("showByDefault")) AVTconfig.showByDefault = true;
+    if (!AVTconfig.hasOwnProperty("areYouThereTimeout")) AVTconfig.areYouThereTimeout = 60;
+    if (!AVTconfig.hasOwnProperty("popTalkAfterRollback")) AVTconfig.popTalkAfterRollback = false;
+    if (!AVTconfig.hasOwnProperty("warningAge")) AVTconfig.warningAge = 7;
+    if (!AVTconfig.hasOwnProperty("welcomeAnon")) AVTconfig.welcomeAnon = true;
+    if (!AVTconfig.hasOwnProperty("welcomeReg")) AVTconfig.welcomeReg = true;
+
+    // Filter configuration:
+    if (!AVTfilters.hasOwnProperty("groupFilterOn")) AVTfilters.groupFilterOn = false;
+    if (!AVTfilters.hasOwnProperty("groupFilter")) AVTfilters.groupFilter = ["sysop", "bureaucrat"];
+    if (!AVTfilters.hasOwnProperty("editCountFilterOn")) AVTfilters.editCountFilterOn = true;
+    if (!AVTfilters.hasOwnProperty("editCountFilter")) AVTfilters.editCountFilter = 200;
+    if (!AVTfilters.hasOwnProperty("titleFilters")) AVTfilters.titleFilters = [/[Ss]andbox/, /User.*TWA/];
+
+    //the following item is required in the title filter list to prevent the bug in issue #18
+    //since it is a bug fix, we don't keep it in the editable title filter list
     AVTfilters.titleFilters.push(/\.(css|js)/);
 
     mw.loader.load('mediawiki.action.history.diff'); //load the CSS required for diff-styling
@@ -443,7 +467,7 @@ AVT.processFilterDiff = function() {
 AVT.diffDisplay = function(title, editor, timestamp, summary, matches, content, revid, isNewPage, isKnownVandal){ //function to generate and append the HTML to display a matching diff
     //this function uses single quotes for strings for ease of dealing with HTML attributes
     var newHTML, rollbackToken, rollbackLink, dismissLink, wlDismissLink, dismissPriorLink, temptime;
-    var timearray = new Array();
+    var timearray = [];
 
     if (!matches && !isKnownVandal) return; //FIXME: why does matches come up null here from time to time? (and not on a known vandal)
 
