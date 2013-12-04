@@ -257,7 +257,7 @@ AVT.processNewPageFilterDiff = function() {
 
                     //since there's a match, we need to parse more thoroughly
                     matches = content.match(badWords); //get an array of the matches
-                    content.replace(badWords, '<span style="background-color: yellow ! important">$&</span>'); //highlight each match in the content text for display
+                    content.replace(badWords, '<span style="border: red solid ! important">$&</span>'); //highlight each match in the content text for display
 
                     AVT.diffDisplay(title, editor, timestamp, summary, matches, content, revid, 1, false); //call the function to add this revision to the user's display
 
@@ -441,7 +441,7 @@ AVT.processFilterDiff = function() {
                                 if (matches) matches = findUnique(matches); //filter out duplicates
                                 //FIXME: matches is sometimes null here -- why? if there's no match, it should have been rejected up at the .test() call
 
-                                diff = diff.replace(badWords, '<span style="background-color: yellow"><big>$&</big></span>'); //highlight each match in the content text for display
+                                diff = diff.replace(badWords, '<span style="border: red solid"><big>$&</big></span>'); //highlight each match in the content text for display
 
                                 diff = "<table>" + diff + "</table>"; //the diff sent by the server starts with <tr>'s, no table tags are included
 
@@ -525,7 +525,7 @@ AVT.diffDisplay = function(title, editor, timestamp, summary, matches, content, 
         newHTML += 'matched <b>' + matches.join(', ') + "</b> "; //add matches separated by a comma and space
     } else {
         var kvCount = AVTvandals[editor];
-        newHTML += (isNewPage ? 'created' : 'performed') + ' by <span style="font-color: red"><b>an editor you rolled back ' + kvCount + ' time' + (kvcount > 1 ? 's.' : '.') + ' </b></span> ';
+        newHTML += (isNewPage ? 'created' : 'performed') + ' by <span style="color: red"><b>an editor you rolled back ' + kvCount + ' time' + (kvCount > 1 ? 's.' : '.') + ' </b></span> ';
     }
 
     //assemble line of links to rollback function, save it for later to add to the bottom
